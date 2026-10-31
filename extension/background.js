@@ -418,9 +418,9 @@ chrome.runtime.onInstalled.addListener(async ({ previousVersion }) => {
   if (/^0\.[12]\./.test(previousVersion ?? '')) {
     await chrome.storage.local.set({ settings: { ...(await getSettings()), dwell: true } });
   }
-  // Models made before 0.3.2 may come from a different camera resolution, which
-  // shifts head position by far more than the screen, so they can't be reused.
-  if (/^0\.([12]\.|3\.[01]$)/.test(previousVersion ?? '')) {
+  // Models from before 0.7.0 have a different shape, and older ones may come from a
+  // different camera resolution, so none of them can be reused.
+  if (/^0\.[1-6]\./.test(previousVersion ?? '')) {
     await chrome.storage.local.remove(['gazeBias', 'model', 'modelHead']);
     chrome.tabs.create({ url: 'calibrate.html' });
   }

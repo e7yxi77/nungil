@@ -380,6 +380,70 @@ const meanError = (model, position) => SCREEN_POINTS.reduce((sum, [px, py]) => {
   return sum + Math.hypot(p.x - px, p.y - py);
 }, 0) / SCREEN_POINTS.length;
 
+// Replays a head motion at 25fps. path(ms) gives [yaw, pitch] offsets from rest.
+function replayHead(path, durationMs, { noise = 0.004, seed = 41 } = {}) {
+  const { createHeadFlick } = globalThis.GazeModel;
+  const detect = createHeadFlick();
+  const r = rng(seed);
+  const fired = [];
+  for (let t = 0; t < 1500 + durationMs + 1500; t += 40) {
+    const [y, p] = t < 1500 ? [0, 0] : path(t - 1500);
+    const { flick } = detect(0.1 + y + r() * noise, -0.05 + p + r() * noise, 10000 + t);
+    if (flick) fired.push(flick);
+  }
+  return fired;
+}
+// A flick shape: out in outMs, straight back in backMs.
+const flickPath = (y, p, outMs = 120, backMs = 160) => (t) => {
+  const k = t < outMs ? t / outMs : t < outMs + backMs ? 1 - (t - outMs) / backMs : 0;
+  return [y * k, p * k];
+};
+
+test('head flick: a quick nod in each of the four directions fires exactly once', () => {
+  for (let seed = 1; seed < 12; seed++) {
+    assert.deepStrictEqual(replayHead(flickPath(0.13, 0), 400, { seed }), ['yaw+'], `right, seed ${seed}`);
+    assert.deepStrictEqual(replayHead(flickPath(-0.13, 0), 400, { seed }), ['yaw-'], `left, seed ${seed}`);
+    assert.deepStrictEqual(replayHead(flickPath(0, 0.1), 400, { seed }), ['pitch+'], `pitch up, seed ${seed}`);
+    assert.deepStrictEqual(replayHead(flickPath(0, -0.1), 400, { seed }), ['pitch-'], `pitch down, seed ${seed}`);
+  }
+});
+
+test('head flick: looking around, turning and staying, and tremor fire nothing', () => {
+  for (let seed = 1; seed < 12; seed++) {
+    const slow = (t) => [0.25 * Math.min(1, t / 1500), 0];
+    assert.deepStrictEqual(replayHead(slow, 3000, { seed }), [], `slow turn, seed ${seed}`);
+    const stay = (t) => [0.2 * Math.min(1, t / 120), 0];
+    assert.deepStrictEqual(replayHead(stay, 3000, { seed }), [], `quick turn that stays, seed ${seed}`);
+    const slowThere = (t) => [0.2 * Math.sin(Math.PI * Math.min(1, t / 2000)), 0];
+    assert.deepStrictEqual(replayHead(slowThere, 2500, { seed }), [], `slow there and back, seed ${seed}`);
+    const nodSmall = flickPath(0.025, 0.012);
+    assert.deepStrictEqual(replayHead(nodSmall, 400, { seed }), [], `small movement, seed ${seed}`);
+    assert.deepStrictEqual(replayHead(() => [0, 0], 4000, { seed, noise: 0.03 }), [], `noisy still head, seed ${seed}`);
+  }
+});
+
+test('head flick: a diagonal is ambiguous and fires nothing', () => {
+  assert.deepStrictEqual(replayHead(flickPath(0.1, 0.08), 400), []);
+});
+
+test('head flick: two flicks in a row both count, once the cooldown has passed', () => {
+  const path = (t) => (t < 400 ? flickPath(0.13, 0)(t) : t > 1500 ? flickPath(-0.13, 0)(t - 1500) : [0, 0]);
+  assert.deepStrictEqual(replayHead(path, 2200), ['yaw+', 'yaw-']);
+});
+
+test('neighbourIn prefers the same row or column, and respects direction', () => {
+  const { neighbourIn } = globalThis.GazeModel;
+  const box = (x, y) => ({ left: x, right: x + 80, top: y, bottom: y + 40 });
+  const grid = [box(100, 100), box(300, 100), box(500, 100), box(100, 300), box(300, 300), box(320, 150)];
+  assert.strictEqual(neighbourIn('right', grid[0], grid), 1, 'same row beats closer but lower');
+  assert.strictEqual(neighbourIn('left', grid[1], grid), 0);
+  assert.strictEqual(neighbourIn('down', grid[1], grid), 5);
+  assert.strictEqual(neighbourIn('up', grid[4], grid), 5);
+  assert.strictEqual(neighbourIn('left', grid[0], grid), -1, 'nothing that way');
+  assert.strictEqual(neighbourIn('up', grid[0], grid), -1);
+  assert.strictEqual(neighbourIn('right', grid[2], grid), -1);
+});
+
 test('a noisy head-turn phase still teaches the head, and is not trimmed away', () => {
   const r = rng(31);
   const samples = [];
@@ -396,6 +460,44 @@ test('a noisy head-turn phase still teaches the head, and is not trimmed away', 
   }
   const err = meanError(model, { headShare: 0.9 });
   assert.ok(err < 110, `looking mostly by turning the head: ${Math.round(err)}px`);
+});
+
+test('each screen axis only learns from what can move it, even with noisy data', () => {
+  const r = rng(77);
+  const samples = physicalCalibration(77).map((s) => ({ ...s, f: s.f.map((v, i) => (i === 1 ? v + r() * 0.03 : v + r() * 0.002)) }));
+  const { model } = fit(samples);
+  assert.strictEqual(model.wy[1], 0, 'turning sideways must not move the cursor vertically');
+  assert.strictEqual(model.wx[2], 0, 'nodding must not move the cursor sideways');
+  assert.ok(model.wy[2] < 0, `a higher head ray means a higher point: ${model.wy[2]}`);
+  const pxPerCmX = Math.abs(model.wx[1]) / 5, pxPerCmY = Math.abs(model.wy[2]) / 5;
+  assert.ok(Math.abs(pxPerCmX - pxPerCmY) < 0.001, 'same scale on both axes');
+});
+
+test('the eye-look signal rescues vertical gaze when the iris position is nearly useless', () => {
+  const r = rng(91);
+  const makeSamples = (useLook) => physicalCalibration(91).map((s) => {
+    const trueY = s.f[1];
+    const f = [...s.f];
+    f[1] = trueY * 0.15 + r() * 0.02; // eyelids hide most of the vertical movement
+    if (useLook) { f[7] = r() * 0.02; f[8] = trueY * 1.5 + r() * 0.03; }
+    return { ...s, f };
+  });
+  const plain = crossValidate(makeSamples(false), undefined, globalThis.GazeModel.errorY);
+  const withLook = crossValidate(makeSamples(true), undefined, globalThis.GazeModel.errorY);
+  assert.ok(withLook < plain * 0.7, `vertical error ${Math.round(plain)}px without, ${Math.round(withLook)}px with`);
+});
+
+test('extractFeatures adds eye-look signals, signed so opposite directions are opposite', () => {
+  const lm = Array.from({ length: 478 }, (_, i) => ({ x: 0.3 + (i % 7) * 0.05, y: 0.4 + (i % 5) * 0.05 }));
+  const matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -50, 1];
+  const shapes = (entries) => Object.entries(entries).map(([categoryName, score]) => ({ categoryName, score }));
+  const up = extractFeatures(lm, matrix, 1, shapes({ eyeLookUpLeft: 0.6, eyeLookUpRight: 0.6 })).features;
+  const down = extractFeatures(lm, matrix, 1, shapes({ eyeLookDownLeft: 0.6, eyeLookDownRight: 0.6 })).features;
+  assert.ok(Math.abs(up[8] - 0.6) < 1e-9 && Math.abs(down[8] + 0.6) < 1e-9, `${up[8]} ${down[8]}`);
+  const one = extractFeatures(lm, matrix, 1, shapes({ eyeLookOutLeft: 0.4, eyeLookInRight: 0.4 })).features;
+  const other = extractFeatures(lm, matrix, 1, shapes({ eyeLookInLeft: 0.4, eyeLookOutRight: 0.4 })).features;
+  assert.ok(one[7] > 0 && other[7] < 0);
+  assert.strictEqual(extractFeatures(lm, matrix, 1).features.length, 9, 'still works without them');
 });
 
 test('accuracy holds after moving in the seat, sideways, up, closer and further', () => {

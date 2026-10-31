@@ -125,7 +125,7 @@ try {
         if (m.type === 'frame' && m.face) { clearTimeout(timer); chrome.runtime.onMessage.removeListener(on); res(m); }
       });
     }));
-    assert.strictEqual(frame.features.length, 7);
+    assert.strictEqual(frame.features.length, 9);
     assert.ok(frame.features.every(Number.isFinite), JSON.stringify(frame.features));
     assert.ok(Math.abs(frame.features[0]) < 0.3, `ex=${frame.features[0]}`);
     assert.ok(frame.features[6] < 0, `tz=${frame.features[6]}`);
@@ -140,7 +140,7 @@ try {
       wx: [0, 5, 0, 0, 0, 0, 0, 0],
       wy: [0, 0, 5, 0, 0, 0, 0, 0],
       errorPx: 100,
-      version: 3,
+      version: 4,
     },
   }));
   // Stop the real tracker's frames from fighting the injected ones.
@@ -358,6 +358,39 @@ try {
     assert.ok(Math.abs(moved.left - (link.x - 4)) < 3, `moved to link: ${moved.left} vs ${link.x}`);
   });
 
+  await check('head flick: moves to the neighbour that way, and stays there', async () => {
+    await lookAt('#b', 900);
+    const box = await page.locator('#b').boundingBox();
+    const gazeX = box.x + box.width / 2 + offset.x, gazeY = box.y + box.height / 2 + offset.y;
+    const send = (yaw, pitch) => sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, [0, 0, yaw, pitch, gazeX, gazeY, -40]]);
+    const flick = async (yaw, pitch) => {
+      for (const k of [0, 0, 0, 0, 0, 0, 0.6, 1, 1, 0.5, 0, 0, 0]) {
+        await send(yaw * k, pitch * k);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    };
+    const highlightOn = async (selector) => {
+      const b = await page.locator(selector).boundingBox();
+      return Math.abs((await boxStyle()).left - (b.x - 4)) < 3;
+    };
+    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
+    await flick(0.14, 0); // this test's model maps raised yaw to the right
+    assert.ok(await highlightOn('#link'), JSON.stringify(await boxStyle()));
+    for (let i = 0; i < 25; i++) {
+      await send(0, 0);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    assert.ok(await highlightOn('#link'), 'gaze still near B must not pull it back');
+    await page.waitForTimeout(800); // cooldown
+    await flick(-0.14, 0);
+    assert.ok(await highlightOn('#b'), `back to B: ${JSON.stringify(await boxStyle())}`);
+    await page.waitForTimeout(800);
+    await flick(0, 0.1); // this test's model maps raised pitch to up
+    assert.ok(await highlightOn('#a'), `up to A: ${JSON.stringify(await boxStyle())}`);
+    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
+    await page.waitForTimeout(100);
+  });
+
   await check('only pressable items highlight: a section wrapping a button never does', async () => {
     await lookAt('#section', 1000);
     const inner = await page.locator('#inner').boundingBox();
@@ -372,7 +405,7 @@ try {
         wx: [0, 5, 0, 0, 0, 0, 0, 0],
         wy: [0, 0, 5, 0, 0, 0, 0, 0],
         errorPx: 100,
-        version: 3,
+        version: 4,
       },
     }));
     await setSettings({ cursor: 'head' });
@@ -977,8 +1010,8 @@ try {
     assert.ok(model, `no model saved; page said: ${text}`);
     assert.ok(Number.isFinite(model.errorPx), `errorPx=${model.errorPx}`);
     assert.ok(Number.isFinite(model.eyeErrorPx) && Number.isFinite(model.headErrorPx), JSON.stringify(model));
-    assert.strictEqual(model.wx.length, 8);
-    assert.strictEqual(model.version, 3);
+    assert.strictEqual(model.wx.length, 10);
+    assert.strictEqual(model.version, 4);
     results.push(`INFO calibration result: ${text}`);
     await cal.close();
   });

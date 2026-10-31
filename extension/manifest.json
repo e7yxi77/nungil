@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "눈길",
-  "version": "0.5.2",
+  "version": "0.7.0",
   "description": "눈과 목소리로 웹을 쓰세요. 시선 추적은 내 기기 안에서만 처리돼요.",
   "permissions": ["offscreen", "storage", "scripting", "tabs", "tts", "webNavigation"],
   "host_permissions": ["<all_urls>"],

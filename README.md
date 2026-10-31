@@ -1,104 +1,103 @@
-# 눈길 Nungil
+# 눈길
 
-Browse the web with your eyes and voice. A Chrome extension for people who can't easily use a mouse.
+눈과 목소리로 웹을 쓰는 크롬 확장 프로그램이에요. 마우스를 쓰기 어려운 사람을 위해 만들었어요.
 
-Look at a button and it highlights. Keep looking, or say "클릭", and it's clicked. No special hardware, just a webcam and a mic.
+항목을 바라보면 표시되고, 계속 바라보거나 "클릭"이라고 말하면 눌려요. 특별한 장비 없이 웹캠과 마이크만 있으면 돼요.
 
-## Install
+## 설치
 
-1. Open `chrome://extensions` and turn on **Developer mode**.
-2. Click **Load unpacked** and choose the `extension` folder.
-3. Click the extension's toolbar icon, then **시선 교정 / Calibrate**.
-4. Allow the camera and mic. If macOS asks, allow Chrome in System Settings too.
-5. Look at each of the 9 dots.
-6. Reload any tabs that were open before you installed it, if the overlay doesn't appear.
+1. `chrome://extensions`를 열고 **개발자 모드**를 켜요.
+2. **압축해제된 확장 프로그램을 로드합니다**를 눌러 `extension` 폴더를 골라요.
+3. 확장 프로그램 아이콘을 누르고 **시선 교정**을 눌러요.
+4. 카메라와 마이크를 허용해요. macOS에서 물으면 시스템 설정에서도 크롬을 허용해요.
+5. 안내에 따라 점을 바라봐요. 1분쯤 걸려요.
 
-## Voice commands
+## 응시 클릭
 
-| Korean | English | Action |
-| --- | --- | --- |
-| 클릭 | click | Press the highlighted item |
-| 번호, then 3번 | numbers, then three | Label items with numbers and pick one |
-| 아래로 / 위로 | down / up | Scroll |
-| 맨 위로 / 맨 아래로 | top / bottom | Jump to the end |
-| 뒤로 / 앞으로 | back / forward | Change page |
-| 새로고침 | reload | Reload the page |
-| 입력 안녕하세요 | type hello | Enter text in the focused field |
-| 시선 맞춤 | recenter | Fix the cursor when it drifts |
-| 멈춰 / 다시 시작 | pause / resume | Stop and restart control |
-| 클릭 5 | click 5 | Pick a labelled item directly |
-| 읽어줘 / 단순 보기 | read / simplify | Read aloud, or show text only |
-| 취소 | cancel | Close numbers and help |
-| 도움말 | help | Show this list on the page |
+바라보는 항목에 테두리가 표시돼요. 움직이는 포인터는 없어요. 0.5초 뒤 카운트다운이 시작되고, 1.5초가 지나면 눌려요. 시간 조절과 끄기는 팝업에서 할 수 있어요.
 
-**Dwell click** is on by default: the item you look at is highlighted, and holding your gaze on it clicks it: the countdown starts after 0.5 seconds and runs for 1.5 seconds. There's no moving pointer. It never clicks buttons that look risky, such as 결제 or 삭제. Those turn red and need a spoken "클릭". You can change the time or turn it off in the popup.
+결제나 삭제처럼 보이는 버튼은 응시로 눌리지 않아요. 빨간 테두리가 뜨면 "클릭"이라고 말해 확인해요.
 
-Webcam gaze can't separate items packed together, like a navbar. Only an item you can actually press is ever highlighted, and the highlight holds still until your gaze has clearly moved off it. When you rest your gaze on a group like that, or say "클릭" there, its items open large in the middle of the screen. Look at one (0.5 seconds, then a 1-second countdown), or say its number. Each choice also teaches the tracker how far off it was.
+웹캠 시선으로는 메뉴처럼 붙어 있는 항목을 구분하기 어려워요. 그런 곳을 바라보거나 그 위에서 "클릭"이라고 말하면, 근처 항목이 화면 가운데에 크게 펼쳐져요. 큰 버튼을 바라보거나(0.5초 뒤 1초 카운트다운) 번호를 말해서 고르면 돼요.
 
-## Other hands-free controls
+## 고개 까딱
 
-Each one can be turned on or off in the popup.
+표시된 항목이 원하는 것이 아니면, 원하는 쪽으로 고개를 빠르게 까딱하고 돌아오세요. 그 방향의 옆 항목으로 넘어가요. 왼쪽, 오른쪽, 위, 아래를 지원해요.
 
-| Control | Action | Default |
-| --- | --- | --- |
-| Open mouth (hold 0.9s) | Scroll down, repeating while your mouth stays open | On |
-| Pop sound / hum | Click / scroll down | Off, and it replaces voice commands while on |
-| Head-only cursor | Ignore the eyes and steer only by turning your head, after its own calibration. For dim light | Off |
+천천히 돌리거나 돌린 채로 있으면 평소 움직임으로 보고 무시해요. 대각선도 무시해요. 고를 때마다 시선이 어긋난 정도를 조금씩 학습해요. 팝업에서 끌 수 있어요.
 
-The default cursor follows both your eyes and your head, because calibration has you look at dots both ways. Recalibrate after updating from an older version.
+## 음성 명령
 
-## Staying accurate
-
-The cursor is worked out from where your head is and which way you're looking, so it should hold up when you shift in your seat. If it still drifts:
-
-- Say "시선 맞춤" (recenter), or use the popup button, then look at the centre dot for 2 seconds.
-- Saying "클릭" also corrects it a little: if the item you click was slightly off from your gaze, it learns the difference.
-- Recalibrate fully if you move to a different seat or the lighting changes.
-
-## Reading
-
-Say "읽어줘" (read) to read the article aloud with each word highlighted, or "단순 보기" (simplify) for a large-text view with no speech. Say "그만" or "닫기" to close. Word highlighting depends on the voice installed; some voices highlight nothing but still read.
-
-## AI features
-
-Sign in to ChatGPT from the popup. These use your own ChatGPT account, with no API key.
-
-| Say | What happens |
+| 말하기 | 동작 |
 | --- | --- |
-| 로그인 버튼 눌러줘 / click the login button | AI finds the item on screen and presses it. Risky or ambiguous matches get number labels to confirm instead |
-| 뉴스 찾아줘 / find news | AI labels matching items without pressing anything |
-| 단순 보기 / simplify | Shows the article at once, then swaps in easy wording. Without sign-in, the plain article stays |
-| 요약해줘 / summarize | Shows a short summary and reads it aloud |
+| 클릭 | 바라보는 항목 누르기 |
+| 번호, 이어서 3번 | 번호를 붙여서 고르기 |
+| 클릭 5 | 번호가 붙은 항목 바로 고르기 |
+| 아래로 / 위로 | 스크롤 |
+| 맨 위로 / 맨 아래로 | 끝으로 이동 |
+| 뒤로 / 앞으로 | 페이지 이동 |
+| 새로고침 | 페이지 다시 읽기 |
+| 입력 안녕하세요 | 선택한 칸에 글자 입력 |
+| 시선 맞춤 | 어긋난 시선 바로 맞추기 |
+| 읽어줘 / 단순 보기 | 본문 읽어 주기, 본문만 보기 |
+| 멈춰 / 다시 시작 | 일시정지와 재개 |
+| 취소 | AI 작업, 번호, 도움말 닫기 |
+| 도움말 | 명령어 목록 보기 |
 
-| 지메일 들어가서 메일 작성해줘 / go to gmail and write an email | AI carries out the whole task, moving between pages, pressing and typing, up to 12 steps |
+## 다른 조작 방법
 
-While the AI works, your voice can stop it: say 취소 or 멈춰. It stops by itself and asks you before pressing anything that looks hard to undo, such as send, pay or delete: say 1번 to confirm. It won't type into password or payment fields, and it leaves sign-in to you. Turn it off in the popup with "AI tasks". Each step sends your request, the page's address without its query string, and the labels of on-screen items to your ChatGPT account. On a mailbox, those labels include subject lines. A page could also try to trick the AI through its text, which is why the checks above live in the extension, not in the AI.
+팝업에서 각각 켜고 끌 수 있어요.
 
-Free-form requests must be phrased as a request: ending in 눌러줘, 열어줘, 찾아줘 or another 해줘 form, or starting with click, press, open, find, go to, search for, compose or write. Other conversation is not sent to the AI, but something near the mic phrased that way could be, so turn off AI tasks if you're around other voices. Only items currently on screen can be found.
+| 방법 | 동작 | 기본값 |
+| --- | --- | --- |
+| 입 벌리기 (0.9초) | 아래로 스크롤, 벌리고 있으면 계속 | 켜짐 |
+| 팝 소리 / 허밍 | 클릭 / 아래로 스크롤 | 꺼짐, 켜면 음성 명령이 꺼져요 |
+| 머리만 쓰기 | 머리 방향만으로 조작, 별도 교정 필요, 어두운 곳에 적합 | 꺼짐 |
 
-This signs in through the OpenAI Codex CLI's OAuth client and calls the endpoint that client uses. OpenAI publishes that interface for its own tools, not third parties, so it's a terms-of-service gray area and may stop working. Fine for a hackathon demo; replace it with an official API before a public release or Chrome Web Store submission.
+기본 설정은 눈과 머리를 함께 따라가요. 교정할 때 점을 눈으로도 보고 머리를 돌려서도 보기 때문이에요. 앉은 자리가 조금 바뀌어도 계산에 반영되도록 만들었어요.
 
-## Privacy
+어긋나면 "시선 맞춤"이라고 말하거나 팝업 버튼을 누르고 가운데 점을 2초 보세요. 자리를 크게 옮기거나 조명이 바뀌면 다시 교정하세요.
 
-- **Camera:** processed on the device by MediaPipe. Video is never stored or sent anywhere.
-- **Voice:** uses Chrome's speech recognition, which may send audio to Google. Don't describe voice as on-device.
-- **AI features:** off until you sign in. When you use one, the page's article text or the labels of on-screen items are sent to your ChatGPT account. "단순 보기" sends the article automatically once you're signed in. Values typed into fields are not sent. Sign-in tokens are stored in the extension's local storage, unencrypted.
+## AI 기능
 
-## Known limits
+팝업에서 ChatGPT에 로그인하면 쓸 수 있어요. 내 ChatGPT 계정을 쓰고, API 키는 필요 없어요.
 
-- Webcam gaze isn't precise. Good lighting and a steady head help, and "번호" handles small or crowded targets.
-- It only controls the top frame, so it can't click inside cross-origin iframes.
-- Extensions can't run on `chrome://` pages or the Chrome Web Store.
-- Some sites ignore script-generated clicks.
-- Calibration assumes 100% page zoom.
+| 말하기 | 동작 |
+| --- | --- |
+| 로그인 버튼 눌러줘 | 화면에서 찾아 누르기. 중요하거나 애매한 항목은 번호로 확인 |
+| 뉴스 찾아줘 | 맞는 항목에 번호만 표시 |
+| 단순 보기 | 본문을 바로 보여 주고, 쉬운 말로 바꿔서 교체 |
+| 요약해줘 | 짧게 요약해서 보여 주고 읽어 주기 |
+| 지메일 들어가서 메일 작성해줘 | 페이지 이동, 누르기, 입력을 반복해서 끝까지 수행 (최대 12단계) |
 
-## Development
+AI가 작업하는 동안 "취소"나 "멈춰"라고 말하면 멈춰요. 전송, 결제, 삭제처럼 되돌리기 어려운 버튼은 누르기 전에 멈추고, "1번"이라고 말해야 눌려요. 비밀번호와 결제 칸에는 입력하지 않고, 로그인은 직접 해야 해요. 웹페이지 글이 AI를 속이려 할 수 있어서, 이 안전장치는 AI가 아니라 확장 프로그램 코드에 들어 있어요.
+
+요청은 "해줘, 눌러줘, 열어줘, 찾아줘"처럼 부탁하는 말로 끝나야 해요. 그 밖의 대화는 AI로 보내지 않아요. 다만 주변 사람이 그렇게 말해도 반응할 수 있으니, 주변에 다른 목소리가 있으면 팝업에서 **AI 자동 수행**을 꺼 두세요.
+
+이 기능은 OpenAI Codex CLI의 OAuth 클라이언트로 로그인하고, 그 클라이언트가 쓰는 주소를 호출해요. OpenAI가 자사 도구용으로 둔 경로라 약관상 회색 지대이고, 언제든 멈출 수 있어요. 해커톤 데모에는 쓸 수 있지만, 공개 출시나 크롬 웹 스토어 등록 전에는 공식 API로 바꿔야 해요.
+
+## 개인정보
+
+- **카메라:** MediaPipe로 기기 안에서만 처리해요. 영상을 저장하거나 보내지 않아요.
+- **음성:** 크롬 음성 인식을 써서 음성이 Google로 전송될 수 있어요. 소리 조작 모드는 기기 안에서만 처리해요.
+- **AI 기능:** 로그인 전에는 꺼져 있어요. 쓸 때 페이지 본문이나 화면의 항목 이름, 말한 요청, 페이지 주소(쿼리 문자열 제외)가 내 ChatGPT 계정으로 전송돼요. 메일함에서는 항목 이름에 메일 제목이 포함돼요. 로그인한 상태에서 "단순 보기"를 말하면 본문이 자동으로 전송돼요. 입력 칸에 쓴 내용은 보내지 않아요. 로그인 토큰은 확장 프로그램 저장소에 암호화 없이 저장돼요.
+- **진단 기록:** 문제를 찾기 위해 프레임 수, 커서 좌표, 명령 이름 같은 숫자를 기기 안에만 저장해요. 페이지 주소와 말한 내용은 기록하지 않아요.
+
+## 알려진 한계
+
+- 웹캠 시선은 정확하지 않아요. 조명이 밝고 머리가 안정적일수록 좋아요.
+- 맨 위 프레임만 조작할 수 있어서, 다른 사이트의 iframe 안은 누를 수 없어요.
+- `chrome://` 페이지와 크롬 웹 스토어에서는 동작하지 않아요.
+- 스크립트 클릭을 무시하는 사이트가 있어요.
+- 교정은 페이지 확대율 100%를 기준으로 해요.
+
+## 개발
 
 ```sh
-(cd extension && zip -qr ../landing/nungil-extension.zip . -x '.*')  # the landing page's download
+(cd extension && zip -qr ../landing/nungil-extension.zip . -x '.*')  # 랜딩 페이지 다운로드 파일 만들기
 npm install
-npm test          # gaze model, snapping, command parsing
-npm run e2e       # real extension in Chromium, with a photo as the fake webcam
+npm test          # 시선 모델, 명령 해석, 로그인 로직
+npm run e2e       # 실제 확장 프로그램을 Chromium에서 시험 (사진을 가짜 웹캠으로 사용)
 ```
 
-The e2e test runs real MediaPipe, but injects gaze frames and recognised commands. It doesn't test real eye movement or real speech.
+브라우저 테스트는 실제 MediaPipe를 돌리지만 시선 값, 음성 명령, AI 응답은 흉내 낸 값을 넣어요. 실제 눈 움직임, 실제 음성, 실제 OpenAI 응답은 시험하지 않아요.

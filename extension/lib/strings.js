@@ -54,6 +54,6 @@
     },
   };
   globalThis.nungilStrings = () => STRINGS.ko;
-  globalThis.NUNGIL_MODEL_VERSION = 3; // bump when stored models can't be read any more
-  globalThis.NUNGIL_DEFAULTS = { enabled: false, dwell: true, dwellMs: 1500, mouth: true, agent: true, sound: false, cursor: 'eyes' };
+  globalThis.NUNGIL_MODEL_VERSION = 4; // bump when stored models can't be read any more
+  globalThis.NUNGIL_DEFAULTS = { enabled: false, dwell: true, dwellMs: 1500, mouth: true, flick: true, agent: true, sound: false, cursor: 'eyes' };
 })();

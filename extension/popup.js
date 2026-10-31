@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const TOGGLES = ['mouth', 'agent', 'sound'];
+const TOGGLES = ['mouth', 'flick', 'agent', 'sound'];
 let signedIn = false;
 const SELF_HEAL_INTERVAL_MS = 60_000;
 const PING_TIMEOUT_MS = 3000;

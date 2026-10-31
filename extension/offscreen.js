@@ -13,6 +13,7 @@ async function createLandmarker() {
     runningMode: 'VIDEO',
     numFaces: 1,
     outputFacialTransformationMatrixes: true,
+    outputFaceBlendshapes: true,
   });
   try {
     return { landmarker: await create('GPU'), delegate: 'GPU' };
@@ -85,7 +86,7 @@ async function main() {
     let frame = { type: 'frame', face };
     if (face) {
       const aspect = video.videoHeight / video.videoWidth;
-      const { open, ...metrics } = GazeModel.extractFeatures(landmarks, matrix.data, aspect);
+      const { open, ...metrics } = GazeModel.extractFeatures(landmarks, matrix.data, aspect, result.faceBlendshapes?.[0]?.categories);
       frame = { ...frame, ...metrics };
     }
     chrome.runtime.sendMessage(frame).catch(() => {});

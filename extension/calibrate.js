@@ -143,8 +143,11 @@ async function runCalibration() {
   const { model } = GazeModel.fit(samples);
   const errorPx = GazeModel.crossValidate(samples);
   const eyeErrorPx = GazeModel.crossValidate(samples, (s) => s.point < eyePoints.length);
+  const isEyeDot = (s) => s.point < eyePoints.length;
+  const eyeErrorX = GazeModel.crossValidate(samples, isEyeDot, GazeModel.errorX);
+  const eyeErrorY = GazeModel.crossValidate(samples, isEyeDot, GazeModel.errorY);
   const headErrorPx = headPoints.length ? GazeModel.crossValidate(samples, (s) => s.point >= eyePoints.length) : null;
-  await chrome.storage.local.set({ [HEAD_MODE ? 'modelHead' : 'model']: { ...model, errorPx, eyeErrorPx, headErrorPx, version: NUNGIL_MODEL_VERSION, at: Date.now() } });
+  await chrome.storage.local.set({ [HEAD_MODE ? 'modelHead' : 'model']: { ...model, errorPx, eyeErrorPx, eyeErrorX, eyeErrorY, headErrorPx, version: NUNGIL_MODEL_VERSION, at: Date.now() } });
   await chrome.storage.local.remove('gazeBias');
   show('done');
   const parts = headErrorPx === null ? '' : ` (눈 ${Math.round(eyeErrorPx)}px · 머리 ${Math.round(headErrorPx)}px)`;

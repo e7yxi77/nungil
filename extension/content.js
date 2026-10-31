@@ -5,12 +5,14 @@
   // A newly injected copy always takes over instead.
   window.__nungilDispose?.();
   (() => {
-    const { predict, createFilter, pickTarget, createHoldGesture, headOnly } = GazeModel;
+    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, neighbourIn, headOnly } = GazeModel;
 
     const SNAP_RADIUS = 140;
     const SWITCH_MS = 350;
     const DWELL_START_DELAY_MS = 500; // looking around shouldn't start a countdown
     const STICKY_PX = 50;
+    const HOLD_RELEASE_PX = 220;
+    const FLICK_FIND_RADIUS_PX = 260;
     const RAW_WINDOW = 5;
     const MAX_TARGET_VIEWPORT_SHARE = 0.4;
     const DWELL_COOLDOWN_MS = 1500;
@@ -57,6 +59,8 @@
     let filter = createFilter();
     const mouthGesture = createHoldGesture(MOUTH_MS, { repeatMs: MOUTH_REPEAT_MS });
     let rawWindow = [];
+    const headFlick = createHeadFlick();
+    let holdAt = null; // where the gaze was when a flick chose the current item
     let eyesClosedAt = null;
     let calibrateHintShown = false;
     let dwellAnchor = null; // where the gaze has been resting, and since when
@@ -215,12 +219,44 @@
     const isRisky = (el) => RISKY.test(`${el.innerText || ''} ${el.value || ''} ${el.getAttribute('aria-label') || ''}`);
 
     function setTarget(el, now) {
+      if (!el) holdAt = null;
       if (target) { lastTarget = target; lastTargetAt = now; }
       target = el;
       targetSince = now;
       targetRisky = Boolean(el && isRisky(el));
       if (el && targetRisky && settings.dwell) toast(t.risky);
       drawBox();
+    }
+
+    // Signs come from this user's own calibration, so a mirrored camera can't reverse
+    // them. Screen x and y run opposite to camera x and y if the model learned nothing.
+    function flickDirection(flick, model) {
+      const sx = Math.sign(model.wx[1]) || -1;
+      const sy = Math.sign(model.wy[2]) || -1;
+      if (flick === 'yaw+') return sx > 0 ? 'right' : 'left';
+      if (flick === 'yaw-') return sx > 0 ? 'left' : 'right';
+      // Raised pitch lowers the ray.
+      if (flick === 'pitch+') return sy > 0 ? 'up' : 'down';
+      return sy > 0 ? 'down' : 'up';
+    }
+
+    function moveByFlick(flick, model, now) {
+      const list = targets;
+      const rects = list.map((c) => c.rect);
+      let from = list.find((c) => c.el === target)?.rect;
+      if (!from) {
+        const i = pickTarget(rects, gaze, FLICK_FIND_RADIUS_PX);
+        if (i < 0) return;
+        from = rects[i];
+      }
+      const next = neighbourIn(flickDirection(flick, model), from, rects);
+      if (next < 0) return; // nothing that way: the highlight staying put says so
+      // Choosing this item says the gaze was off by this much.
+      learnDrift(gaze, list[next].el);
+      setTarget(list[next].el, now);
+      candidate = null;
+      holdAt = { x: gaze.x, y: gaze.y };
+      dwellAnchor = null;
     }
 
     function updateTarget(point, now) {
@@ -285,7 +321,7 @@
       if (!dwellAnchor || Math.hypot(gaze.x - dwellAnchor.x, gaze.y - dwellAnchor.y) > ambiguityRadius() * ANCHOR_RADIUS_RATIO) {
         dwellAnchor = { x: gaze.x, y: gaze.y, since: now };
       }
-      const near = nearbyTargets(gaze, ambiguityRadius());
+      const near = holdAt ? [] : nearbyTargets(gaze, ambiguityRadius());
       const candidates = near.length ? near : target ? [target] : [];
       if (!candidates.length || (candidates.length === 1 && isRisky(candidates[0]))) {
         ui.ring.style.display = 'none';
@@ -340,6 +376,9 @@
       }
       eyesClosedAt = null;
       const raw = predict(model, settings.cursor === 'head' ? headOnly(msg.features) : msg.features);
+      const motion = settings.flick && !msg.mouthOpen && !agentRunning && !recentering
+        ? headFlick(msg.features[2], msg.features[3], now)
+        : { flick: null, moving: false };
       if (recentering?.collecting) recentering.samples.push(raw);
       // Median first: a single wild frame would otherwise jolt the highlight.
       rawWindow = [...rawWindow.slice(1 - RAW_WINDOW), raw];
@@ -350,7 +389,10 @@
         y: Math.max(0, Math.min(innerHeight - 1, v.y)),
       };
       gazeAt = now;
-      updateTarget(gaze, now);
+      if (motion.flick) moveByFlick(motion.flick, model, now);
+      if (holdAt && Math.hypot(gaze.x - holdAt.x, gaze.y - holdAt.y) > HOLD_RELEASE_PX) holdAt = null;
+      // A flick moves the head, which moves the gaze: the highlight must not chase it.
+      if (!motion.moving && !motion.flick && !holdAt) updateTarget(gaze, now);
       drawBox();
       updateDwell(now);
     }
@@ -970,7 +1012,7 @@
           enabled: settings.enabled,
           cursorMode: settings.cursor,
           model: Boolean(activeModel()),
-          calibration: { all: activeModel()?.errorPx, eye: activeModel()?.eyeErrorPx, head: activeModel()?.headErrorPx },
+          calibration: { all: activeModel()?.errorPx, eye: activeModel()?.eyeErrorPx, eyeX: activeModel()?.eyeErrorX, eyeY: activeModel()?.eyeErrorY, head: activeModel()?.headErrorPx },
           gaze: gaze && { x: Math.round(gaze.x), y: Math.round(gaze.y) },
           viewport: { w: innerWidth, h: innerHeight },
           targets: targets.length,
