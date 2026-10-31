@@ -178,8 +178,8 @@ try {
     return { display: getComputedStyle(b).display, left: parseFloat(b.style.left), top: parseFloat(b.style.top), width: parseFloat(b.style.width) };
   });
 
-  await check('dwell click is on by default, and there is no moving pointer', async () => {
-    assert.strictEqual(await sw.evaluate(() => NUNGIL_DEFAULTS.dwell), true);
+  await check('dwell click is off by default, and there is no moving pointer', async () => {
+    assert.strictEqual(await sw.evaluate(() => NUNGIL_DEFAULTS.dwell), false);
     assert.strictEqual(await page.evaluate(() => document.getElementById('__nungil-host').shadowRoot.querySelector('.cursor')), null);
   });
   await setSettings({ dwell: false });
@@ -1103,6 +1103,25 @@ try {
     await page.waitForTimeout(100);
   });
 
+  await check('recenter ignores a gaze that never settles on the dot', async () => {
+    await sw.evaluate(() => chrome.offscreen.hasDocument().then((open) => open && chrome.offscreen.closeDocument()));
+    await sw.evaluate(() => chrome.storage.local.remove(['needsRecenter', 'gazeBias']));
+    await page.waitForTimeout(4600); // an earlier attempt may still be running out its time
+    await say({ name: 'recenter' });
+    const size = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+    const end = Date.now() + 5400;
+    let i = 0;
+    while (Date.now() < end) {
+      // Looking all over the page, not at the dot.
+      const x = size.w / 2 + offset.x + (i % 2 ? 300 : -300);
+      i++;
+      await sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, [0, 0, 0, 0, x, size.h / 2 + offset.y, -40]]);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    assert.strictEqual((await sw.evaluate(() => chrome.storage.local.get('gazeBias'))).gazeBias, undefined, 'nothing saved');
+    await page.waitForTimeout(100);
+  });
+
   await check('quick calibration: four dots fix offset and scale, and the model is untouched', async () => {
     await sw.evaluate(() => chrome.offscreen.hasDocument().then((open) => open && chrome.offscreen.closeDocument()));
     await sw.evaluate(() => chrome.storage.local.remove(['needsRecenter', 'gazeBias']));
@@ -1120,7 +1139,7 @@ try {
       }
     }
     const fix = await until(async () => (await sw.evaluate(() => chrome.storage.local.get('gazeBias'))).gazeBias, 'correction saved', 3000);
-    assert.ok(Math.abs(fix.sx - 1.25) < 0.1 && Math.abs(fix.sy - 1.25) < 0.1, JSON.stringify(fix));
+    assert.ok(fix.sx > 1.08 && fix.sx < 1.3 && fix.sy > 1.08 && fix.sy < 1.3, JSON.stringify(fix));
     assert.strictEqual(await sw.evaluate(async () => JSON.stringify((await chrome.storage.local.get('model')).model)), modelBefore);
     await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
     await sw.evaluate(() => restart());
@@ -1176,6 +1195,8 @@ try {
       return (await dot()) === 'block';
     }, 'dot appears by itself', 6000);
     assert.strictEqual((await boxStyle()).display, 'none', 'nothing highlights yet');
+    const veil = () => page.evaluate(() => document.getElementById('__nungil-host').shadowRoot.querySelector('.veil').classList.contains('on'));
+    assert.strictEqual(await veil(), true, 'background blurred behind the dot');
     await say({ name: 'click' });
     await page.waitForTimeout(150);
     assert.deepStrictEqual(await clicks(), before, 'nothing can be pressed');
@@ -1187,6 +1208,7 @@ try {
     }
     await until(async () => !(await flag()), 'requirement cleared', 3000);
     assert.strictEqual(await dot(), 'none');
+    assert.strictEqual(await veil(), false, 'background clears afterwards');
     await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
     await page.waitForTimeout(100);
     await lookAt('#b', 900);

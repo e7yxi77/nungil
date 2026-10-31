@@ -482,9 +482,9 @@ chrome.runtime.onStartup.addListener(sync);
 // Content scripts don't reach tabs that were already open at install time.
 chrome.runtime.onInstalled.addListener(async ({ previousVersion, reason }) => {
   if (reason === 'install') chrome.tabs.create({ url: 'calibrate.html?onboarding=1' });
-  // Dwell became the main way to click in 0.3.0; older installs may have it off.
-  if (/^0\.[12]\./.test(previousVersion ?? '')) {
-    await chrome.storage.local.set({ settings: { ...(await getSettings()), dwell: true } });
+  // Dwell click became opt-in in 0.23.0.
+  if (/^0\.([1-9]|1\d|2[0-2])\./.test(previousVersion ?? '')) {
+    await chrome.storage.local.set({ settings: { ...(await getSettings()), dwell: false } });
   }
   // Models from before 0.9.0 still mix the head in, and older ones may come from a
   // different camera resolution, so none of them can be reused.

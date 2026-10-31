@@ -230,10 +230,13 @@ test('four dots recover offset and scale, and an impossible fit is refused', () 
   const dots = [[300, 200], [1200, 200], [1200, 700], [300, 700]];
   const drifted = dots.map(([x, y]) => ({ x, y, seenX: (x - 750) * 0.7 + 750 - 120, seenY: (y - 450) * 1.3 + 450 + 80 }));
   const fix = fitCorrection(drifted);
-  for (const d of drifted) {
+  assert.ok(Math.abs(fix.sx - 1.3) < 0.02 && Math.abs(fix.sy - 0.84) < 0.02, JSON.stringify(fix));
+  const raw = drifted.reduce((sum, d) => sum + Math.hypot(d.seenX - d.x, d.seenY - d.y), 0) / 4;
+  const fixed = drifted.reduce((sum, d) => {
     const p = applyCorrection(fix, { x: d.seenX, y: d.seenY });
-    assert.ok(Math.hypot(p.x - d.x, p.y - d.y) < 1, JSON.stringify(p));
-  }
+    return sum + Math.hypot(p.x - d.x, p.y - d.y);
+  }, 0) / 4;
+  assert.ok(fixed < raw * 0.4, `${Math.round(raw)}px before, ${Math.round(fixed)}px after`);
   assert.strictEqual(fitCorrection(dots.map(([x, y]) => ({ x, y, seenX: x + 2000, seenY: y }))), null, 'too far');
   assert.strictEqual(fitCorrection(dots.map(([x, y]) => ({ x, y, seenX: (x - 750) * 0.1 + 750, seenY: y }))), null, 'almost no spread');
   const plain = applyCorrection({ x: 10, y: -5 }, { x: 100, y: 100 });
@@ -564,26 +567,36 @@ test('a flick maps to the side the user actually moved toward', () => {
   assert.strictEqual(flickDirection('pitch-'), 'up');
 });
 
-test('head assist keeps gaze accurate when the seat shifts or the head turns', () => {
+test('head assist keeps gaze accurate sideways, and never touches height', () => {
   const { createHeadAssist } = globalThis.GazeModel;
   const { model } = fit(physicalCalibration(55));
   const POINTS = [[300, 200], [960, 540], [1600, 300], [500, 850], [1500, 900]];
-  const errorAt = (position, assisted) => POINTS.reduce((sum, [px, py]) => {
+  const errorX = (position, assisted) => POINTS.reduce((sum, [px, py]) => {
     const f = physicalFrame(px, py, position);
-    const p = predict(model, f);
-    const assist = createHeadAssist(model);
-    const shift = assisted ? assist(f, 0, false) : { x: 0, y: 0 };
-    return sum + Math.hypot(p.x + shift.x - px, p.y + shift.y - py);
+    const shift = assisted ? createHeadAssist(model)(f, 0, false) : { x: 0 };
+    return sum + Math.abs(predict(model, f).x + shift.x - px);
   }, 0) / POINTS.length;
   for (const [name, position] of Object.entries({
     'shifted sideways': { x: 6 },
-    'sitting higher': { y: -15 },
     'head partly turned toward the point': { headShare: 0.5 },
     'both': { x: 4, headShare: 0.4 },
   })) {
-    const without = errorAt(position, false), withAssist = errorAt(position, true);
+    const without = errorX(position, false), withAssist = errorX(position, true);
     assert.ok(withAssist < without * 0.6, `${name}: ${Math.round(without)}px without, ${Math.round(withAssist)}px with`);
   }
+  // Slumping or tilting must not throw the point up or down the screen.
+  const assist = createHeadAssist(model);
+  assert.strictEqual(assist(physicalFrame(960, 540, { y: -35, headShare: 0.6 }), 0, false).y, 0);
+});
+
+test('isSteady waits for the eyes to arrive', () => {
+  const { isSteady } = globalThis.GazeModel;
+  const still = Array.from({ length: 12 }, (_, i) => ({ x: 500 + (i % 3) * 20, y: 300 - (i % 4) * 15 }));
+  assert.strictEqual(isSteady(still), true);
+  assert.strictEqual(isSteady(still.slice(0, 6)), false, 'too few');
+  const moving = Array.from({ length: 12 }, (_, i) => ({ x: 100 + i * 60, y: 300 }));
+  assert.strictEqual(isSteady(moving), false);
+  assert.strictEqual(isSteady([...moving, ...still]), true, 'arrived: only recent readings count');
 });
 
 test('head assist: turning with the eyes held moves the point the same way, and quick swings are ignored', () => {

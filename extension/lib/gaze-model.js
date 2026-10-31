@@ -8,6 +8,7 @@
   // screen axis sees just its own eye signals, since with few dots a free fit invents links.
   const X_TERMS = [0, 3, 5, 8]; // intercept, eye x, eye x squared, look x
   const Y_TERMS = [0, 4, 6, 9]; // intercept, eye y, eye y squared, look y
+  const SCALE_TRUST = 0.7;
   const LOOK = {
     x: [['eyeLookOutLeft', 1], ['eyeLookInRight', 1], ['eyeLookInLeft', -1], ['eyeLookOutRight', -1]],
     y: [['eyeLookUpLeft', 1], ['eyeLookUpRight', 1], ['eyeLookDownLeft', -1], ['eyeLookDownRight', -1]],
@@ -279,6 +280,14 @@
     };
   }
 
+  // Whether recent gaze readings have settled in one place, meaning the eyes have arrived.
+  function isSteady(samples, { count = 10, spreadPx = 160 } = {}) {
+    if (samples.length < count) return false;
+    const recent = samples.slice(-count);
+    const spread = (axis) => Math.max(...recent.map((p) => p[axis])) - Math.min(...recent.map((p) => p[axis]));
+    return spread('x') <= spreadPx && spread('y') <= spreadPx;
+  }
+
   // A correction on top of the calibrated model: offset always, scale when four dots gave one.
   function applyCorrection({ x = 0, y = 0, sx = 1, sy = 1, cx = 0, cy = 0 }, p) {
     return { x: cx + sx * (p.x - cx) + x, y: cy + sy * (p.y - cy) + y };
@@ -299,11 +308,13 @@
     const ay = axis(pairs.map((p) => p.seenY), pairs.map((p) => p.y));
     const fine = (a) => a.scale >= minScale && a.scale <= maxScale && Math.abs(a.offset) <= maxOffset;
     if (!fine(ax) || !fine(ay)) return null;
-    return { x: ax.offset, y: ay.offset, sx: ax.scale, sy: ay.scale, cx: ax.center, cy: ay.center };
+    // Four dots measure scale less surely than offset, so it only goes part of the way.
+    const damp = (scale) => 1 + (scale - 1) * SCALE_TRUST;
+    return { x: ax.offset, y: ay.offset, sx: damp(ax.scale), sy: damp(ay.scale), cx: ax.center, cy: ay.center };
   }
 
   // Head assist: where you look is where the eyes point plus where the head points, so
-  // this adds the head's part to the eye model. It keeps the point steady when the body
+  // this adds the head's horizontal part to the eye model. It keeps the point steady when the body
   // shifts or the head turns while the eyes hold on something (they counter-rotate), and
   // lets a small head turn fine-tune the point. The scale comes from the eye weights, as
   // an eye rotates its iris about 0.4 of an eye width per radian. It's frozen during a
@@ -321,7 +332,10 @@
       }
       last = t;
       // The camera faces the user: screen x and y run opposite to camera x and y.
-      return { x: clamp(-pxPerCm * (smooth.hx - model.mean[0])), y: clamp(-pxPerCm * (smooth.hy - model.mean[1])) };
+      // Sideways only. Real calibration data never supported this for height: the eyelids
+      // hide how far the eyes counter-rotate vertically, so head pitch alone pushed the
+      // point far off, usually to the bottom of the screen, whenever posture changed.
+      return { x: clamp(-pxPerCm * (smooth.hx - model.mean[0])), y: 0 };
     };
   }
 
@@ -352,5 +366,5 @@
   const errorX = (model, s) => Math.abs(predict(model, s.f).x - s.x);
   const errorY = (model, s) => Math.abs(predict(model, s.f).y - s.y);
 
-  globalThis.GazeModel = { errorX, errorY, extractFeatures, fit, predict, crossValidate, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn, applyCorrection, fitCorrection };
+  globalThis.GazeModel = { errorX, errorY, extractFeatures, fit, predict, crossValidate, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn, applyCorrection, fitCorrection, isSteady };
 })();

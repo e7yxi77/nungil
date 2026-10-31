@@ -5,7 +5,7 @@
   // A newly injected copy always takes over instead.
   window.__nungilDispose?.();
   (() => {
-    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn, applyCorrection, fitCorrection } = GazeModel;
+    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn, applyCorrection, fitCorrection, isSteady } = GazeModel;
 
     const SNAP_MIN_PX = 150;
     const SNAP_MAX_PX = 300;
@@ -34,7 +34,9 @@
     const NAMED_MAX_CHOICES = 9;
     const RECENTER_SETTLE_MS = 900;
     const RECENTER_COLLECT_MS = 1100;
-    const RECENTER_MIN_SAMPLES = 5;
+    const RECENTER_KEEP_SAMPLES = 12;
+    const RECENTER_GIVE_UP_MS = 4000;
+    const RECENTER_MAX_ATTEMPTS = 3;
     const RECENTER_RETRY_MS = 1500;
     const QUICK_DOTS = [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]];
     const FACE_GONE_MS = 2000;
@@ -63,6 +65,8 @@
     let holdAt = null; // where the gaze was when a flick chose the current item
     let gazeMutedUntil = 0;
     let needsRecenter = false;
+    let recenterAttempts = 0;
+    let lastRealign = null;
     let faceGoneAt = null;
     let recenterRetryAt = 0;
     let headAssist = null;
@@ -103,7 +107,9 @@
         .box.fire { background: rgba(0, 113, 227, .35); }
         .ring { position: fixed; display: none; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .35));
           -webkit-mask: radial-gradient(farthest-side, transparent 72%, #000 74%); mask: radial-gradient(farthest-side, transparent 72%, #000 74%); }
-        .recenter { transition: left .4s cubic-bezier(.2, .8, .2, 1), top .4s cubic-bezier(.2, .8, .2, 1); position: fixed; display: none; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #0071e3; border: 4px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12), 0 8px 24px rgba(0, 0, 0, .3); }
+        .veil { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(16px) saturate(120%); backdrop-filter: blur(16px) saturate(120%); opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s; }
+        .veil.on { opacity: 1; visibility: visible; }
+        .recenter { transition: left .4s cubic-bezier(.2, .8, .2, 1), top .4s cubic-bezier(.2, .8, .2, 1); position: fixed; display: none; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #0a84ff; border: 4px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3), 0 0 32px rgba(10, 132, 255, .9); }
         .toast { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); max-width: min(80vw, 620px); padding: 13px 22px; border-radius: 22px; background: rgba(29, 29, 31, .78); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); color: #fff; font-size: 16px; line-height: 1.4; font-weight: 500; letter-spacing: -.01em; text-align: center; display: none; box-shadow: 0 10px 34px rgba(0, 0, 0, .28); animation: rise .28s cubic-bezier(.2, .8, .2, 1); }
         .badge { position: fixed; min-width: 28px; height: 28px; padding: 0 8px; border-radius: 14px; background: #0071e3; color: #fff; font-size: 15px; line-height: 28px; font-weight: 600; text-align: center; box-shadow: 0 0 0 2px #fff, 0 4px 12px rgba(0, 0, 0, .28); }
         .help { position: fixed; top: 20px; right: 20px; width: 360px; max-width: calc(100vw - 32px); padding: 20px 22px; border-radius: 20px; background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); color: #1d1d1f; display: none; box-shadow: 0 18px 50px rgba(0, 0, 0, .22); }
@@ -132,6 +138,7 @@
         }
         @media (prefers-reduced-transparency: reduce) {
           .toast { background: #1d1d1f; -webkit-backdrop-filter: none; backdrop-filter: none; }
+          .veil { background: rgba(0, 0, 0, .8); -webkit-backdrop-filter: none; backdrop-filter: none; }
           .help { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
         }
         @media (prefers-contrast: more) {
@@ -141,12 +148,13 @@
       <div class="reader"></div>
       <div class="box"></div>
       <div class="ring"></div>
+      <div class="veil"></div>
       <div class="recenter"></div>
       <div class="badges"></div>
       <div class="help" role="dialog"></div>
       <div class="toast" role="status" aria-live="polite"></div>`;
     const $ = (s) => root.querySelector(s);
-    const ui = { box: $('.box'), ring: $('.ring'), badges: $('.badges'), reader: $('.reader'), recenter: $('.recenter'), toast: $('.toast'), help: $('.help') };
+    const ui = { box: $('.box'), ring: $('.ring'), badges: $('.badges'), reader: $('.reader'), recenter: $('.recenter'), veil: $('.veil'), toast: $('.toast'), help: $('.help') };
     // After an extension reload the old script is cut off but its overlay stays in
     // the page, which would leave a frozen cursor on screen.
     document.getElementById(host.id)?.remove();
@@ -413,13 +421,31 @@
       return sorted[Math.floor(sorted.length / 2)];
     }
 
-    function collectAt(point, samples) {
-      return new Promise((resolve) => {
-        ui.recenter.style.cssText = `display:block;left:${point.x}px;top:${point.y}px`;
-        recentering = { samples, collecting: false };
-        setTimeout(() => { if (recentering) recentering.collecting = true; }, RECENTER_SETTLE_MS);
-        setTimeout(resolve, RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
-      });
+    function hideDot() {
+      ui.recenter.style.display = 'none';
+      ui.veil.classList.remove('on');
+    }
+
+    // Shows a dot and waits until the gaze has actually settled, keeping only those
+    // readings. Measuring on a timer alone records wherever the user happened to be
+    // looking, and saves that as a correction. Resolves false if it never settles.
+    async function collectAt(point, samples) {
+      ui.veil.classList.add('on');
+      ui.recenter.style.cssText = `display:block;left:${point.x}px;top:${point.y}px`;
+      recentering = { samples: [], collecting: false };
+      await new Promise((resolve) => setTimeout(resolve, RECENTER_SETTLE_MS));
+      recentering.collecting = true;
+      const started = performance.now();
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const seen = recentering.samples;
+        const elapsed = performance.now() - started;
+        if (elapsed >= RECENTER_COLLECT_MS && isSteady(seen)) {
+          samples.push(...seen.slice(-RECENTER_KEEP_SAMPLES));
+          return true;
+        }
+        if (elapsed > RECENTER_GIVE_UP_MS) return false;
+      }
     }
 
     const viewportToScreen = (p) => {
@@ -427,9 +453,27 @@
       return { x: p.x - origin.x, y: p.y - origin.y };
     };
 
+    // A failed attempt tries again, but never forever: that would lock the user out.
     function retryLater() {
+      recenterAttempts += 1;
       recenterRetryAt = performance.now() + RECENTER_RETRY_MS;
+      if (recenterAttempts >= RECENTER_MAX_ATTEMPTS) {
+        recenterAttempts = 0;
+        chrome.storage.local.remove('needsRecenter');
+        toast(t.recenterTooFar, 5000);
+        return;
+      }
       toast(t.recenterFail);
+    }
+
+    function finishRealign(kind, next, ok) {
+      lastRealign = { kind, ok, at: Date.now(), ...(next ?? {}) };
+      recenterAttempts = 0;
+      chrome.storage.local.remove('needsRecenter');
+      if (ok) {
+        saveBias(next);
+        toast(t.recenterDone);
+      }
     }
 
     // One dot, two seconds: fixes an offset, for when the user has only shifted a little.
@@ -440,21 +484,23 @@
       toast(prompt, RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
       const samples = [];
       const point = { x: innerWidth / 2, y: innerHeight / 2 };
-      await collectAt(point, samples);
+      const settled = await collectAt(point, samples);
       recentering = null;
-      ui.recenter.style.display = 'none';
-      if (samples.length < RECENTER_MIN_SAMPLES) { retryLater(); return; }
+      hideDot();
+      if (!settled) { retryLater(); return; }
       const target = viewportToScreen(point);
       const seen = { x: median(samples.map((p) => p.x)), y: median(samples.map((p) => p.y)) };
       const scaled = applyCorrection({ ...bias, x: 0, y: 0 }, seen);
       const next = { ...bias, x: target.x - scaled.x, y: target.y - scaled.y };
-      // Either way the requirement ends: retrying forever would lock the user out.
-      chrome.storage.local.remove('needsRecenter');
-      // An offset this big means the calibration itself is wrong. Saving it would
-      // only hide that, and pin the gaze to a screen edge once anything changes.
-      if (Math.hypot(next.x, next.y) > RECENTER_MAX_PX) { toast(t.recenterTooFar, 5000); return; }
-      saveBias(next);
-      toast(t.recenterDone);
+      // An offset this big means the eyes weren't on the dot, or the calibration itself is
+      // off. Saving it would only pin the gaze to a screen edge.
+      if (Math.hypot(next.x, next.y) > RECENTER_MAX_PX) {
+        lastRealign = { kind: 'dot', ok: false, ...next };
+        if (needsRecenter) retryLater();
+        else toast(t.recenterTooFar, 5000); // asked for by hand: say so, don't keep at it
+        return;
+      }
+      finishRealign('dot', next, true);
     }
 
     // Four dots, about six seconds: fixes offset and scale without redoing calibration,
@@ -468,10 +514,10 @@
         toast(t.quickLook(i + 1, QUICK_DOTS.length), RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
         const point = { x: innerWidth * fx, y: innerHeight * fy };
         const samples = [];
-        await collectAt(point, samples);
-        if (samples.length < RECENTER_MIN_SAMPLES) {
+        const settled = await collectAt(point, samples);
+        if (!settled) {
           recentering = null;
-          ui.recenter.style.display = 'none';
+          hideDot();
           retryLater();
           return;
         }
@@ -479,12 +525,10 @@
         pairs.push({ seenX: median(samples.map((p) => p.x)), seenY: median(samples.map((p) => p.y)), x: target.x, y: target.y });
       }
       recentering = null;
-      ui.recenter.style.display = 'none';
-      chrome.storage.local.remove('needsRecenter');
+      hideDot();
       const next = fitCorrection(pairs);
-      if (!next) { toast(t.recenterTooFar, 5000); return; }
-      saveBias(next);
-      toast(t.recenterDone);
+      if (!next) { lastRealign = { kind: 'four', ok: false, pairs: pairs.length }; retryLater(); return; }
+      finishRealign('four', next, true);
     }
 
     // ---- Reader -----------------------------------------------------------
@@ -1041,6 +1085,7 @@
           hasTarget: Boolean(target),
           paused,
           bias,
+          lastRealign,
         },
       }).catch(() => {});
     }, 2000);

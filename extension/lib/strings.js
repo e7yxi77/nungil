@@ -31,7 +31,7 @@
       recenterLook: '가운데 점을 바라봐 주세요',
       recenterRequired: '시선을 다시 맞출게요. 가운데 점을 바라봐 주세요',
       recenterDone: '시선을 다시 맞췄어요',
-      recenterFail: '얼굴을 찾지 못했어요. 다시 해 보세요',
+      recenterFail: '시선을 맞추지 못했어요. 점을 계속 바라봐 주세요',
       recenterTooFar: '시선이 너무 많이 어긋났어요. 팝업에서 시선 교정을 다시 해 주세요',
       aiError: 'AI 요청에 실패했어요',
       simplifying: '쉬운 말로 바꾸는 중이에요…',
@@ -61,5 +61,5 @@
   };
   globalThis.nungilStrings = () => STRINGS.ko;
   globalThis.NUNGIL_MODEL_VERSION = 5; // bump when stored models can't be read any more
-  globalThis.NUNGIL_DEFAULTS = { enabled: false, dwell: true, dwellMs: 1500, mouth: true, flick: true, headAssist: true, standby: false, agent: true, sound: false };
+  globalThis.NUNGIL_DEFAULTS = { enabled: false, dwell: false, dwellMs: 1500, mouth: true, flick: true, headAssist: true, standby: false, agent: true, sound: false };
 })();
