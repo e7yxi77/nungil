@@ -40,15 +40,14 @@ async function render() {
   $('enabled').checked = settings.enabled;
   $('dwell').checked = settings.dwell;
   for (const id of TOGGLES) $(id).checked = settings[id];
-  $('cursor').value = settings.cursor;
   $('dwellMs').value = settings.dwellMs;
   $('dwellValue').textContent = `${(settings.dwellMs / 1000).toFixed(1)}초`;
 
   const { status = {} } = await chrome.storage.session.get('status');
-  const stored = await chrome.storage.local.get(['model', 'modelHead', 'oauth:chatgpt']);
+  const stored = await chrome.storage.local.get(['model', 'oauth:chatgpt']);
   signedIn = Boolean(stored['oauth:chatgpt']?.access);
   $('codex').textContent = signedIn ? 'ChatGPT 로그아웃' : 'ChatGPT 로그인 (AI 기능)';
-  const model = settings.cursor === 'head' ? stored.modelHead : stored.model;
+  const { model } = stored;
   const failed = (v) => String(v ?? '').startsWith('error');
   const STATES = { on: '켜짐', listening: '듣는 중' };
   const say = (v) => STATES[v] ?? (failed(v) ? `오류 (${String(v).slice(6)})` : v ?? '-');
@@ -71,21 +70,24 @@ $('enabled').addEventListener('change', async (e) => {
 });
 $('dwell').addEventListener('change', (e) => patchSettings({ dwell: e.target.checked }));
 for (const id of TOGGLES) $(id).addEventListener('change', (e) => patchSettings({ [id]: e.target.checked }));
-$('cursor').addEventListener('change', (e) => patchSettings({ cursor: e.target.value }));
 $('dwellMs').addEventListener('input', (e) => patchSettings({ dwellMs: Number(e.target.value) }));
 $('codex').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: signedIn ? 'codex-logout' : 'codex-login' }).catch(() => {});
 });
+$('guide').addEventListener('click', () => chrome.tabs.create({ url: 'guide.html' }));
 $('recenter').addEventListener('click', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: 'command', command: { name: 'recenter' }, transcript: '' }).catch(() => {});
   window.close();
 });
-$('calibrate').addEventListener('click', async () => {
-  const { cursor } = await getSettings();
-  chrome.tabs.create({ url: cursor === 'head' ? 'calibrate.html?mode=head' : 'calibrate.html' });
-});
+$('calibrate').addEventListener('click', () => chrome.tabs.create({ url: 'calibrate.html' }));
 
 chrome.storage.onChanged.addListener(render);
 render();
 selfHeal();
+// A first-timer gets the guided start, not a wall of settings.
+chrome.storage.local.get('onboardingDone').then(({ onboardingDone }) => {
+  if (onboardingDone) return;
+  chrome.tabs.create({ url: 'calibrate.html?onboarding=1' });
+  window.close();
+});

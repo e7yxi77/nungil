@@ -36,6 +36,7 @@ let failed = false;
 try {
   const sw = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   assert.strictEqual(await sw.evaluate(() => Boolean(chrome.webNavigation)), false, 'test setup: permission must be missing');
+  await sw.evaluate(() => chrome.storage.local.set({ onboardingDone: true }));
   const popupUrl = `chrome-extension://${new URL(sw.url()).host}/popup.html`;
   // Stands in for the real reload, which would end this test's extension.
   await context.addInitScript(() => {

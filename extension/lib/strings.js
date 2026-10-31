@@ -23,8 +23,6 @@
       agentTooLong: '단계가 너무 많아서 멈췄어요',
       agentOff: 'AI 자동 수행이 꺼져 있어요',
       agentSensitive: '비밀번호와 결제 정보는 직접 입력해 주세요',
-      panelItem: '이름 없는 항목',
-      panelCancel: '취소',
       recenterLook: '가운데 점을 바라봐 주세요',
       recenterDone: '시선을 다시 맞췄어요',
       recenterFail: '얼굴을 찾지 못했어요. 다시 해 보세요',
@@ -54,6 +52,6 @@
     },
   };
   globalThis.nungilStrings = () => STRINGS.ko;
-  globalThis.NUNGIL_MODEL_VERSION = 4; // bump when stored models can't be read any more
-  globalThis.NUNGIL_DEFAULTS = { enabled: false, dwell: true, dwellMs: 1500, mouth: true, flick: true, agent: true, sound: false, cursor: 'eyes' };
+  globalThis.NUNGIL_MODEL_VERSION = 5; // bump when stored models can't be read any more
+  globalThis.NUNGIL_DEFAULTS = { enabled: false, dwell: true, dwellMs: 1500, mouth: true, flick: true, agent: true, sound: false };
 })();

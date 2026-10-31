@@ -23,6 +23,21 @@
     #stage { position: fixed; inset: 0; background: #000; cursor: none; }
     #dot { position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: #0a84ff; border: 4px solid #fff; box-shadow: 0 0 30px rgba(10, 132, 255, .7); transition: left .5s cubic-bezier(.2, .8, .2, 1), top .5s cubic-bezier(.2, .8, .2, 1); }
     #dot.collect { transform: scale(.55); transition: left .5s cubic-bezier(.2, .8, .2, 1), top .5s cubic-bezier(.2, .8, .2, 1), transform .3s cubic-bezier(.2, .8, .2, 1); }
+    #dot.off { opacity: 0; }
+    #phase { position: fixed; inset: 0; display: grid; place-content: center; gap: 18px; padding: 24px; text-align: center; opacity: 0; transition: opacity .9s ease; pointer-events: none; }
+    #phase.on { opacity: 1; }
+    #phase::before { content: ''; position: absolute; inset: -20%; z-index: -1; background: radial-gradient(38% 42% at 32% 42%, rgba(10, 132, 255, .34), transparent 70%), radial-gradient(34% 40% at 68% 38%, rgba(191, 90, 242, .3), transparent 70%), radial-gradient(40% 40% at 52% 68%, rgba(255, 55, 95, .22), transparent 70%); filter: blur(30px); animation: drift 7s ease-in-out infinite alternate; }
+    #phaseTitle { margin: 0; font-size: clamp(38px, 6.4vw, 72px); line-height: 1.12; font-weight: 700; letter-spacing: -.035em; word-break: keep-all; background: linear-gradient(100deg, #64d2ff, #0a84ff, #bf5af2, #ff375f, #64d2ff); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: flow 5s linear infinite; }
+    #phaseSub { margin: 0; color: #d1d1d6; font-size: clamp(19px, 2.4vw, 26px); letter-spacing: -.015em; word-break: keep-all; }
+    @keyframes flow { to { background-position: -300% 0; } }
+    @keyframes drift { to { transform: scale(1.12) translate(2%, -2%); } }
+    section:not([hidden]) { animation: enter .7s cubic-bezier(.2, .8, .2, 1); }
+    @keyframes enter { from { opacity: 0; transform: translateY(10px); } }
+    @media (prefers-reduced-motion: reduce) {
+      #phaseTitle, #phase::before, section:not([hidden]) { animation: none; }
+      #phaseTitle { color: #fff; background: none; }
+      #phase { transition: opacity .2s; }
+    }
     #stageText { position: fixed; left: 50%; top: 50%; transform: translate(-50%, 56px); color: #a1a1a6; font-size: 17px; text-align: center; letter-spacing: -.01em; }
     @media (prefers-reduced-motion: reduce) { #dot, #dot.collect { transition: none; } }
   </style>
@@ -30,22 +45,23 @@
 <body>
   <main>
     <section id="intro">
-      <h1>시선 교정</h1>
+      <h1 id="introTitle">시선 교정</h1>
       <p>카메라 영상은 이 기기 안에서만 처리돼요. 음성은 크롬 음성 인식 서비스로 전송될 수 있어요.</p>
       <p id="error" hidden></p>
       <button id="allow">카메라·마이크 허용</button>
+      <button id="later" class="secondary" hidden>나중에 할게요</button>
     </section>
 
     <section id="ready" hidden>
       <h1>얼굴을 맞춰 주세요</h1>
       <video id="preview" muted playsinline autoplay></video>
       <p id="faceState">얼굴을 찾는 중…</p>
-      <p>평소 앉는 자세로 앉아 주세요. 화면 안내에 따라 점을 차례로 바라보면 돼요. 1분쯤 걸려요.</p>
+      <p>평소 앉는 자세로 앉아 주세요. 화면 안내에 따라 점을 차례로 바라보면 돼요. 1분쯤 걸려요. "다음"이라고 말해도 시작돼요.</p>
       <button id="begin" disabled>교정 시작</button>
     </section>
 
     <section id="done" hidden>
-      <h1>교정 완료</h1>
+      <h1 id="doneTitle">교정 완료</h1>
       <p id="resultText"></p>
       <button id="finish">닫기</button>
       <button id="again" class="secondary">다시 하기</button>
@@ -53,7 +69,8 @@
   </main>
 
   <div id="stage" hidden>
-    <div id="dot"></div>
+    <div id="dot" class="off"></div>
+    <div id="phase"><h2 id="phaseTitle"></h2><p id="phaseSub"></p></div>
     <div id="stageText"></div>
   </div>
   <script src="lib/strings.js"></script>

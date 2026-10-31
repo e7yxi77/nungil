@@ -91,6 +91,12 @@ async function until(fn, label, ms = 30000) {
 
 try {
   const sw = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+  await check('a fresh install opens the guided start, not settings', async () => {
+    const opened = await until(() => context.pages().find((p) => p.url().includes('calibrate.html?onboarding=1')), 'onboarding tab', 8000);
+    await opened.close();
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ onboardingDone: true }));
+
   const page = await context.newPage();
   page.on('pageerror', (e) => results.push(`PAGE ERROR ${e.message}`));
   await page.goto(pageUrl);
@@ -140,7 +146,7 @@ try {
       wx: [0, 5, 0, 0, 0, 0, 0, 0],
       wy: [0, 0, 5, 0, 0, 0, 0, 0],
       errorPx: 100,
-      version: 4,
+      version: 5,
     },
   }));
   // Stop the real tracker's frames from fighting the injected ones.
@@ -374,7 +380,7 @@ try {
       return Math.abs((await boxStyle()).left - (b.x - 4)) < 3;
     };
     await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
-    await flick(0.14, 0); // this test's model maps raised yaw to the right
+    await flick(-0.14, 0); // the user's right is the camera's left
     assert.ok(await highlightOn('#link'), JSON.stringify(await boxStyle()));
     for (let i = 0; i < 25; i++) {
       await send(0, 0);
@@ -382,13 +388,35 @@ try {
     }
     assert.ok(await highlightOn('#link'), 'gaze still near B must not pull it back');
     await page.waitForTimeout(800); // cooldown
-    await flick(-0.14, 0);
+    await flick(0.14, 0);
     assert.ok(await highlightOn('#b'), `back to B: ${JSON.stringify(await boxStyle())}`);
     await page.waitForTimeout(800);
-    await flick(0, 0.1); // this test's model maps raised pitch to up
+    await flick(0, -0.1); // a lower pitch value is up
     assert.ok(await highlightOn('#a'), `up to A: ${JSON.stringify(await boxStyle())}`);
     await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
     await page.waitForTimeout(100);
+  });
+
+  await check('gaze input stops while the head moves, whatever the eyes seem to say', async () => {
+    await lookAt('#b', 900);
+    const before = await boxStyle();
+    const box = await page.locator('#b').boundingBox();
+    const x = box.x + box.width / 2 + offset.x, y = box.y + box.height / 2 + offset.y;
+    const send = (yaw, gazeX) => sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, [0, 0, yaw, 0, gazeX, y, -40]]);
+    await sw.evaluate(() => chrome.storage.local.set({ settings: { ...NUNGIL_DEFAULTS, enabled: true, dwell: false, flick: false } }));
+    await page.waitForTimeout(100);
+    for (let i = 0; i < 6; i++) { await send(0, x); await new Promise((r) => setTimeout(r, 40)); }
+    // A wild gaze reading the moment the head starts moving, far over the link.
+    const link = await page.locator('#link').boundingBox();
+    for (const k of [0.6, 1, 1, 1, 0.6, 0.2, 0]) {
+      await send(0.14 * k, link.x + offset.x + 10);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    assert.strictEqual((await boxStyle()).left, before.left, 'highlight did not chase the error');
+    await sw.evaluate(() => chrome.storage.local.set({ settings: { ...NUNGIL_DEFAULTS, enabled: true, dwell: false } }));
+    await page.waitForTimeout(600);
+    await lookAt('#link', 1500);
+    assert.notStrictEqual((await boxStyle()).left, before.left, 'gaze works again once the head settles');
   });
 
   await check('only pressable items highlight: a section wrapping a button never does', async () => {
@@ -396,31 +424,6 @@ try {
     const inner = await page.locator('#inner').boundingBox();
     const drawn = await boxStyle();
     assert.ok(Math.abs(drawn.width - (inner.width + 8)) < 3, `box fits the button, width ${drawn.width} vs ${inner.width}`);
-  });
-
-  await check('head cursor uses the head model and ignores eye features', async () => {
-    await sw.evaluate(() => chrome.storage.local.set({
-      modelHead: {
-        mean: [0, 0, 0, 0],
-        wx: [0, 5, 0, 0, 0, 0, 0, 0],
-        wy: [0, 0, 5, 0, 0, 0, 0, 0],
-        errorPx: 100,
-        version: 4,
-      },
-    }));
-    await setSettings({ cursor: 'head' });
-    await page.waitForTimeout(100);
-    const box = await page.locator('#a').boundingBox();
-    // Huge eye values prove head mode ignores the eyes.
-    const f = [99999, 99999, 0, 0, box.x + box.width / 2 + offset.x, box.y + box.height / 2 + offset.y, -40];
-    const end = Date.now() + 800;
-    while (Date.now() < end) {
-      await sw.evaluate(([id, features]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features }), [tabId, f]);
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    const drawn = await boxStyle();
-    assert.ok(Math.abs(drawn.left - (box.x - 4)) < 3, `box.left=${drawn.left} a.x=${box.x}`);
-    await setSettings({ cursor: 'eyes' });
   });
 
   await check('"click 5" picks a labelled item directly', async () => {
@@ -852,83 +855,69 @@ try {
       await new Promise((r) => setTimeout(r, 40));
     }
   };
-  const panelTexts = () => page.evaluate(() => [...document.getElementById('__nungil-host').shadowRoot.querySelectorAll('.panel button')].map((b) => b.textContent));
   const navClicks = () => page.evaluate(() => window.nav);
 
-  await check('navbar: resting gaze on packed items opens them large, despite noisy gaze', async () => {
+  await check('navbar: noisy gaze holds one item and dwell presses it, with no popup', async () => {
     await page.evaluate(() => scrollTo(0, 0));
     await setSettings({ dwell: true, dwellMs: 800 });
     await new Promise((r) => setTimeout(r, 1600));
-    await aimAt('#n2', 3000);
-    const items = await panelTexts();
-    assert.ok(items.some((s) => s.includes('뉴스')) && items.some((s) => s.includes('홈')), JSON.stringify(items));
-    assert.ok(items.at(-1).includes('취소'));
-    assert.deepStrictEqual(await navClicks(), {}, 'nothing pressed yet');
+    await aimAt('#n2', 4000);
+    const pressed = await navClicks();
+    assert.strictEqual(Object.values(pressed).reduce((a, b) => a + b, 0) >= 1, true, JSON.stringify(pressed));
+    assert.strictEqual(Object.keys(pressed).length, 1, `one item only: ${JSON.stringify(pressed)}`);
+    assert.strictEqual(await page.evaluate(() => document.getElementById('__nungil-host').shadowRoot.querySelector('.panel')), null);
+    await setSettings({ dwell: false, dwellMs: 1500 });
+    await page.waitForTimeout(200);
   });
 
-  await check('panel: choices are far apart, and looking at one for a second presses it', async () => {
-    const layout = await page.evaluate(() => {
-      const bs = [...document.getElementById('__nungil-host').shadowRoot.querySelectorAll('.panel button')].map((b) => b.getBoundingClientRect());
-      return bs.map((r) => ({ cx: r.left + r.width / 2, cy: r.top + r.height / 2, w: r.width, h: r.height, label: '' }));
-    });
-    assert.ok(layout.every((r) => r.w >= 150 && r.h >= 100), JSON.stringify(layout));
-    assert.ok(Math.abs(layout[1].cx - layout[0].cx) > 200, 'neighbours further apart than typical gaze error');
-    const items = await panelTexts();
-    const i = items.findIndex((s) => s.includes('쇼핑'));
-    const end = Date.now() + 2600;
-    let n = 0;
+  const toB = async () => {
+    const box = await page.locator('#b').boundingBox();
+    return [0, 0, 0, 0, box.x + box.width / 2 + offset.x, box.y + box.height / 2 + offset.y, -40];
+  };
+  const speech = (active) => sw.evaluate(([id, a]) => chrome.tabs.sendMessage(id, { type: 'speech', active: a }), [tabId, active]);
+  const stream = async (features, ms) => {
+    const end = Date.now() + ms;
     while (Date.now() < end) {
-      const jitter = [-60, 50, -30, 60, -45, 35][n++ % 6];
-      await sw.evaluate(([id, g]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: g }), [tabId, [0, 0, 0, 0, layout[i].cx + offset.x + jitter, layout[i].cy + offset.y - jitter, -40]]);
+      await sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, features]);
       await new Promise((r) => setTimeout(r, 40));
     }
-    await until(async () => (await navClicks()).n3 === 1, 'shopping pressed');
-    assert.deepStrictEqual(await panelTexts(), [], 'panel closes');
-    assert.deepStrictEqual(await navClicks(), { n3: 1 }, 'only the chosen item');
-    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
-    await setSettings({ dwell: false, dwellMs: 1500 });
-    await new Promise((r) => setTimeout(r, 200));
-  });
+  };
 
-  await check('panel: saying "click" over a group asks which, then a number picks it', async () => {
-    await aimAt('#n2', 400);
-    const before = await navClicks();
+  await check('speaking freezes the highlight, and "click" presses what was being looked at', async () => {
+    await lookAt('#b', 900);
+    const before = await boxStyle();
+    const link = await page.locator('#link').boundingBox();
+    await speech(true);
+    await stream([0, 0, 0, 0, link.x + offset.x + 10, link.y + offset.y + 5, -40], 900);
+    assert.strictEqual((await boxStyle()).left, before.left, 'gaze ignored while speaking');
+    const counts = await clicks();
     await say({ name: 'click' });
-    await until(async () => (await panelTexts()).length > 0, 'panel opened by voice');
-    assert.deepStrictEqual(await navClicks(), before);
-    const items = await panelTexts();
-    const i = items.findIndex((s) => s.includes('홈'));
-    await say({ name: 'number', n: i + 1 });
-    await until(async () => (await navClicks()).n1 === 1, 'home pressed by number');
-    assert.deepStrictEqual(await panelTexts(), []);
-    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
+    await until(async () => (await clicks()).b === counts.b + 1, 'clicked the frozen item');
+    await speech(false);
+    await page.waitForTimeout(500);
+    await lookAt('#link', 1500);
+    assert.notStrictEqual((await boxStyle()).left, before.left, 'gaze back after speech');
   });
 
-  await check('panel: a risky choice waits for a spoken number, and cancel closes it', async () => {
-    await page.evaluate(() => {
-      for (const id of ['n1', 'n2']) document.getElementById(id).textContent = id === 'n1' ? '결제' : '뉴스';
-    });
-    await setSettings({ dwell: true, dwellMs: 600 });
-    await new Promise((r) => setTimeout(r, 1600));
-    await aimAt('#n2', 3000);
-    const items = await panelTexts();
-    const risky = items.findIndex((s) => s.includes('결제'));
-    assert.ok(risky >= 0, JSON.stringify(items));
-    const layout = await page.evaluate((idx) => {
-      const r = document.getElementById('__nungil-host').shadowRoot.querySelectorAll('.panel button')[idx].getBoundingClientRect();
-      return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
-    }, risky);
-    const before = await navClicks();
-    const end = Date.now() + 1500;
-    while (Date.now() < end) {
-      await sw.evaluate(([id, g]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: g }), [tabId, [0, 0, 0, 0, layout.cx + offset.x, layout.cy + offset.y, -40]]);
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    assert.deepStrictEqual(await navClicks(), before, 'not pressed by looking');
-    await say({ name: 'hide' });
-    assert.deepStrictEqual(await panelTexts(), []);
-    await setSettings({ dwell: false, dwellMs: 1500 });
-    await page.evaluate(() => { document.getElementById('n1').textContent = '홈'; });
+  await check('speech never leaves the eyes off, even if its end is not reported', async () => {
+    await lookAt('#b', 900);
+    const before = await boxStyle();
+    await speech(true);
+    await page.waitForTimeout(6300);
+    await lookAt('#link', 1500);
+    assert.notStrictEqual((await boxStyle()).left, before.left);
+    await page.waitForTimeout(100);
+  });
+
+  await check('while an AI task runs, speech does not stop the eyes', async () => {
+    await lookAt('#b', 900);
+    const before = await boxStyle();
+    await sw.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'agent-status', running: true }), tabId);
+    await speech(true);
+    await lookAt('#link', 1500);
+    assert.notStrictEqual((await boxStyle()).left, before.left);
+    await speech(false);
+    await sw.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'agent-status', running: false }), tabId);
   });
 
   await check('a second injected copy takes over: one overlay, and one click per command', async () => {
@@ -993,27 +982,82 @@ try {
     await until(async () => (await status())?.voice === 'listening', 'speech restored', 20000);
   });
 
-  await check('calibration page runs start to finish and stores a new model', async () => {
-    await sw.evaluate(() => chrome.storage.local.remove('model'));
+  await check('first run: popup leads to onboarding, then calibration in two phases, then the guide', async () => {
+    await sw.evaluate(() => chrome.storage.local.remove(['model', 'onboardingDone']));
     const extensionId = new URL(sw.url()).host;
-    const cal = await context.newPage();
-    cal.on('pageerror', (e) => results.push(`PAGE ERROR calibrate: ${e.message}`));
-    await cal.goto(`chrome-extension://${extensionId}/calibrate.html`);
+    const opened = context.waitForEvent('page', { timeout: 8000 });
+    const popup = await context.newPage();
+    popup.on('close', () => {});
+    await popup.goto(`chrome-extension://${extensionId}/popup.html`).catch(() => {});
+    const first = await opened;
+    let cal = first.url().includes('popup.html') ? await until(() => context.pages().find((p) => p.url().includes('onboarding=1')), 'onboarding tab') : first;
+    if (!cal.url().includes('onboarding=1')) cal = await until(() => context.pages().find((p) => p.url().includes('onboarding=1')), 'onboarding tab');
+    cal.on('pageerror', (e) => results.push(`PAGE ERROR onboarding: ${e.message}`));
     await cal.bringToFront();
-    await cal.waitForTimeout(500);
-    if (await cal.locator('#allow').isVisible()) await cal.click('#allow');
+    await cal.waitForSelector('#allow');
+    assert.strictEqual(await cal.textContent('#introTitle'), '시선 교정을 할게요');
+    await cal.click('#allow');
     await cal.waitForSelector('#begin:not([disabled])', { timeout: 45000 });
     await cal.click('#begin');
+    await cal.waitForFunction(() => document.getElementById('phase').classList.contains('on') && document.getElementById('phaseTitle').textContent.includes('눈으로만'), null, { timeout: 8000 });
+    assert.ok(await cal.evaluate(() => document.getElementById('dot').classList.contains('off')), 'dots wait for the message');
+    await cal.waitForFunction(() => document.getElementById('stageText').textContent.includes('눈으로만'), null, { timeout: 12000 });
+    await cal.waitForFunction(() => document.getElementById('phaseTitle').textContent.includes('한 번 더') && document.getElementById('phase').classList.contains('on'), null, { timeout: 60000 });
     await cal.waitForSelector('#done:not([hidden])', { timeout: 90000 });
-    const text = await cal.textContent('#resultText');
+    assert.strictEqual(await cal.textContent('#doneTitle'), '등록이 완료됐어요');
     const { model } = await sw.evaluate(() => chrome.storage.local.get('model'));
-    assert.ok(model, `no model saved; page said: ${text}`);
-    assert.ok(Number.isFinite(model.errorPx), `errorPx=${model.errorPx}`);
-    assert.ok(Number.isFinite(model.eyeErrorPx) && Number.isFinite(model.headErrorPx), JSON.stringify(model));
+    assert.ok(Number.isFinite(model.errorPx) && Number.isFinite(model.errorX) && Number.isFinite(model.errorY), JSON.stringify(model));
     assert.strictEqual(model.wx.length, 10);
-    assert.strictEqual(model.version, 4);
-    results.push(`INFO calibration result: ${text}`);
-    await cal.close();
+    assert.strictEqual(model.version, 5);
+    results.push(`INFO calibration result: ${await cal.textContent('#resultText')}`);
+
+    // Voice-only: "다음" presses the main button, and walks the guide.
+    const sayNext = () => sw.evaluate(() => chrome.runtime.sendMessage({ type: 'command', command: { name: 'next' }, transcript: '다음' }).catch(() => {}));
+    await sayNext();
+    await cal.waitForURL(/guide\.html/);
+    await cal.waitForSelector('.step.on');
+    assert.ok((await cal.textContent('.step.on h1')).includes('등록이 완료'));
+    await sayNext();
+    await cal.waitForFunction(() => document.querySelector('.step.on h1').textContent.includes('여기 있어요'));
+    await cal.keyboard.press('ArrowRight');
+    await cal.keyboard.press('ArrowRight');
+    await cal.keyboard.press('ArrowLeft');
+    await cal.waitForFunction(() => document.querySelector('.step.on h1').textContent.includes('설정창'));
+    const titles = await cal.evaluate(() => [...document.querySelectorAll('.step h1')].map((h) => h.textContent));
+    for (const want of ['여기 있어요', '설정창', '바라보면', '까딱', '어긋나면', '말로', 'AI']) assert.ok(titles.some((t) => t.includes(want)), want);
+
+    // Flick practice lights the matching tile. The real tracker has to stop first:
+    // its frames, from a still photo, would be mixed in with these.
+    await setSettings({ enabled: false });
+    await cal.waitForTimeout(500);
+    const practice = titles.findIndex((t) => t.includes('까딱'));
+    const here = await cal.evaluate(() => [...document.querySelectorAll('.step')].findIndex((s) => s.classList.contains('on')));
+    for (let i = here; i < practice; i++) await cal.click('#next');
+    const frame = (yaw) => sw.evaluate((y) => chrome.runtime.sendMessage({ type: 'frame', face: true, blink: false, features: [0, 0, y, 0, 0, 0, -40, 0, 0] }).catch(() => {}), yaw);
+    for (const k of [0, 0, 0, 0, 0, 0, 0.6, 1, 1, 0.5, 0, 0, 0]) {
+      await frame(0.14 * k);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    assert.ok((await cal.textContent('#practiceText')).includes('까딱했어요'), await cal.textContent('#practiceText'));
+
+    for (let i = practice; i < titles.length - 1; i++) await cal.click('#next');
+    assert.strictEqual(await cal.textContent('#next'), '시작하기');
+    await cal.click('#next').catch(() => {});
+    await until(() => sw.evaluate(async () => (await chrome.storage.local.get('onboardingDone')).onboardingDone === true), 'finished');
+  });
+
+  await check('after onboarding the popup opens settings, with the guide one press away', async () => {
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`);
+    await popup.waitForTimeout(400);
+    assert.ok(!popup.isClosed());
+    const opened = context.waitForEvent('page', { timeout: 8000 });
+    await popup.click('#guide');
+    const guide = await opened;
+    await guide.waitForSelector('.step.on');
+    assert.ok((await guide.textContent('.step.on h1')).includes('여기 있어요'), 'reopened guide skips the congratulations');
+    await guide.close();
+    await popup.close();
   });
 } finally {
   await context.close();

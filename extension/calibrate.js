@@ -1,7 +1,6 @@
 // Grants camera/mic (offscreen documents can't show the prompt), then collects
 // gaze samples on 9 screen points and stores the fitted model.
 const SETTLE_MS = 900;
-const HEAD_SETTLE_MS = 1500; // a head arrives much later than the eyes do
 const COLLECT_MS = 1300;
 const MAX_COLLECT_MS = 5000;
 const MIN_SAMPLES = 8;
@@ -9,7 +8,10 @@ const MARGIN = 0.05; // close to the edges: navbars live there, and fits extrapo
 const GOOD_ERROR_PX = 150;
 const OK_ERROR_PX = 280;
 
-const HEAD_MODE = new URLSearchParams(location.search).get('mode') === 'head';
+const params = new URLSearchParams(location.search);
+const ONBOARDING = params.has('onboarding');
+const PHASE_HOLD_MS = 3200;
+const PHASE_FADE_MS = 900;
 const $ = (id) => document.getElementById(id);
 const sections = ['intro', 'ready', 'done'];
 const show = (name) => sections.forEach((s) => { $(s).hidden = s !== name; });
@@ -18,13 +20,33 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let previewStream = null;
 let collecting = null;
 
+// Whichever main button is showing, so "다음" works for people who can't press it.
+function pressMain() {
+  const button = ['allow', 'begin', 'finish'].map($).find((b) => b.offsetParent && !b.disabled);
+  button?.click();
+}
+
+// One big message at a time on a dark screen, with the dots out of the way.
+async function showPhase(title, sub) {
+  $('dot').classList.add('off');
+  $('stageText').textContent = '';
+  $('phaseTitle').textContent = title;
+  $('phaseSub').textContent = sub;
+  $('phase').classList.add('on');
+  await sleep(PHASE_FADE_MS + PHASE_HOLD_MS);
+  $('phase').classList.remove('on');
+  await sleep(PHASE_FADE_MS);
+  $('dot').classList.remove('off');
+}
+
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === 'command' && msg.command.name === 'next') { pressMain(); return; }
   if (msg.type !== 'frame') return;
   $('faceState').textContent = msg.face
     ? '얼굴을 찾았어요'
     : '얼굴을 찾는 중… 카메라를 바라봐 주세요';
   $('begin').disabled = !msg.face;
-  if (collecting && msg.face && !msg.blink) collecting.push(HEAD_MODE ? GazeModel.headOnly(msg.features) : msg.features);
+  if (collecting && msg.face && !msg.blink) collecting.push(msg.features);
 });
 
 async function saveSettings(patch) {
@@ -68,29 +90,27 @@ function shuffledPoints() {
   return points.sort(() => Math.random() - 0.5);
 }
 
-// Looking at dots with the head still teaches the model nothing about the head,
-// so turning it later wouldn't move the cursor. These dots are looked at by
-// turning the head, which gives the fit real head-pose variation to learn from.
-const HEAD_TURN_POINTS = [
+// Inside the first round's grid, so each dot tests the model somewhere new.
+const SECOND_ROUND = [
   { x: 0.5, y: 0.5 },
-  { x: MARGIN, y: MARGIN },
-  { x: 0.5, y: MARGIN },
-  { x: 1 - MARGIN, y: MARGIN },
-  { x: 1 - MARGIN, y: 0.5 },
-  { x: 1 - MARGIN, y: 1 - MARGIN },
-  { x: 0.5, y: 1 - MARGIN },
-  { x: MARGIN, y: 1 - MARGIN },
-  { x: MARGIN, y: 0.5 },
+  { x: 0.27, y: 0.27 },
+  { x: 0.5, y: 0.27 },
+  { x: 0.73, y: 0.27 },
+  { x: 0.73, y: 0.5 },
+  { x: 0.73, y: 0.73 },
+  { x: 0.5, y: 0.73 },
+  { x: 0.27, y: 0.73 },
+  { x: 0.27, y: 0.5 },
 ];
 
-async function collectPoint(point, index, samples, settleMs = SETTLE_MS) {
+async function collectPoint(point, index, samples) {
   const clientX = point.x * window.innerWidth;
   const clientY = point.y * window.innerHeight;
   const dot = $('dot');
   dot.classList.remove('collect');
   dot.style.left = `${clientX}px`;
   dot.style.top = `${clientY}px`;
-  await sleep(settleMs);
+  await sleep(SETTLE_MS);
   dot.classList.add('collect');
   collecting = [];
   const started = performance.now();
@@ -115,20 +135,18 @@ async function runCalibration() {
   await sleep(600);
 
   const samples = [];
-  const eyePoints = shuffledPoints();
-  const headPoints = HEAD_MODE ? [] : HEAD_TURN_POINTS;
-  const total = eyePoints.length + headPoints.length;
-  for (const [i, point] of eyePoints.entries()) {
-    $('stageText').textContent = HEAD_MODE
-      ? `머리를 돌려 코끝으로 점을 가리켜 주세요 (${i + 1}/${total})`
-      : `눈으로만 점을 바라봐 주세요 (${i + 1}/${total})`;
-    await collectPoint(point, i, samples, HEAD_MODE ? HEAD_SETTLE_MS : SETTLE_MS);
-  }
-  for (const [i, point] of headPoints.entries()) {
-    const index = eyePoints.length + i;
-    $('stageText').textContent = `이번엔 머리를 돌려서 점을 바라봐 주세요 (${index + 1}/${total})`;
-    await collectPoint(point, index, samples, HEAD_SETTLE_MS);
-  }
+  const firstRound = shuffledPoints();
+  const total = firstRound.length + SECOND_ROUND.length;
+  const collectRound = async (points, offset) => {
+    for (const [i, point] of points.entries()) {
+      $('stageText').textContent = `눈으로만 점을 바라봐 주세요 (${offset + i + 1}/${total})`;
+      await collectPoint(point, offset + i, samples);
+    }
+  };
+  await showPhase('먼저 눈으로만 점을 바라봐 주세요', '머리는 움직이지 말고, 눈으로만 따라가요.');
+  await collectRound(firstRound, 0);
+  await showPhase('한 번 더 바라봐 주세요', '이번에도 머리는 그대로 두세요. 거의 끝났어요.');
+  await collectRound(SECOND_ROUND, firstRound.length);
 
   $('stage').hidden = true;
   if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
@@ -142,26 +160,39 @@ async function runCalibration() {
 
   const { model } = GazeModel.fit(samples);
   const errorPx = GazeModel.crossValidate(samples);
-  const eyeErrorPx = GazeModel.crossValidate(samples, (s) => s.point < eyePoints.length);
-  const isEyeDot = (s) => s.point < eyePoints.length;
-  const eyeErrorX = GazeModel.crossValidate(samples, isEyeDot, GazeModel.errorX);
-  const eyeErrorY = GazeModel.crossValidate(samples, isEyeDot, GazeModel.errorY);
-  const headErrorPx = headPoints.length ? GazeModel.crossValidate(samples, (s) => s.point >= eyePoints.length) : null;
-  await chrome.storage.local.set({ [HEAD_MODE ? 'modelHead' : 'model']: { ...model, errorPx, eyeErrorPx, eyeErrorX, eyeErrorY, headErrorPx, version: NUNGIL_MODEL_VERSION, at: Date.now() } });
+  const everyDot = () => true;
+  const errorX = GazeModel.crossValidate(samples, everyDot, GazeModel.errorX);
+  const errorY = GazeModel.crossValidate(samples, everyDot, GazeModel.errorY);
+  await chrome.storage.local.set({ model: { ...model, errorPx, errorX, errorY, version: NUNGIL_MODEL_VERSION, at: Date.now() } });
   await chrome.storage.local.remove('gazeBias');
   show('done');
-  const parts = headErrorPx === null ? '' : ` (눈 ${Math.round(eyeErrorPx)}px · 머리 ${Math.round(headErrorPx)}px)`;
-  $('resultText').textContent = describeError(errorPx) + parts;
+  $('resultText').textContent = describeError(errorPx);
 }
 
 $('begin').addEventListener('click', runCalibration);
 $('again').addEventListener('click', runCalibration);
-$('finish').addEventListener('click', () => window.close());
+$('finish').addEventListener('click', () => {
+  if (ONBOARDING) location.href = 'guide.html?onboarding=1';
+  else window.close();
+});
+$('later').addEventListener('click', async () => {
+  await chrome.storage.local.set({ onboardingDone: true });
+  window.close();
+});
+
+if (ONBOARDING) {
+  document.title = '눈길 시작하기';
+  $('introTitle').textContent = '시선 교정을 할게요';
+  $('later').hidden = false;
+  $('allow').textContent = '카메라·마이크 허용하고 시작';
+  $('doneTitle').textContent = '등록이 완료됐어요';
+  $('finish').textContent = '사용법 알아보기';
+}
 
 // Skip the permission step on a recalibration.
 navigator.permissions.query({ name: 'camera' }).then(async (camera) => {
   const mic = await navigator.permissions.query({ name: 'microphone' });
-  if (camera.state !== 'granted' || mic.state !== 'granted') return;
+  if (ONBOARDING || camera.state !== 'granted' || mic.state !== 'granted') return;
   previewStream = await navigator.mediaDevices.getUserMedia({ video: true });
   $('preview').srcObject = previewStream;
   show('ready');

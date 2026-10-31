@@ -363,6 +363,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       diag.commands[msg.command?.name] = (diag.commands[msg.command?.name] ?? 0) + 1;
       toActiveTab(msg);
       break;
+    case 'speech':
+      toActiveTab(msg);
+      break;
     case 'transcript':
       diag.heard = (diag.heard ?? 0) + 1;
       toActiveTab(msg);
@@ -413,15 +416,16 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.runtime.onStartup.addListener(sync);
 
 // Content scripts don't reach tabs that were already open at install time.
-chrome.runtime.onInstalled.addListener(async ({ previousVersion }) => {
+chrome.runtime.onInstalled.addListener(async ({ previousVersion, reason }) => {
+  if (reason === 'install') chrome.tabs.create({ url: 'calibrate.html?onboarding=1' });
   // Dwell became the main way to click in 0.3.0; older installs may have it off.
   if (/^0\.[12]\./.test(previousVersion ?? '')) {
     await chrome.storage.local.set({ settings: { ...(await getSettings()), dwell: true } });
   }
-  // Models from before 0.7.0 have a different shape, and older ones may come from a
+  // Models from before 0.9.0 still mix the head in, and older ones may come from a
   // different camera resolution, so none of them can be reused.
-  if (/^0\.[1-6]\./.test(previousVersion ?? '')) {
-    await chrome.storage.local.remove(['gazeBias', 'model', 'modelHead']);
+  if (/^0\.[1-8]\./.test(previousVersion ?? '')) {
+    await chrome.storage.local.remove(['gazeBias', 'model']);
     chrome.tabs.create({ url: 'calibrate.html' });
   }
   sync();

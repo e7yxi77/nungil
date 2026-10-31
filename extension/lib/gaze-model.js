@@ -4,11 +4,10 @@
   // Fixed scales, not per-session std: dividing by a value that barely moved during
   // calibration would make the model explode the moment it does move.
   const SCALE = [5, 5, 2, 1.5, 15, 15]; // head ray x, y (cm); eye offset x, y (cm); eye-look signal x, y
-  // Each screen axis only sees what can physically move it. With 14 dots a free fit
-  // invents links, such as turning the head sideways moving the cursor vertically.
-  const X_TERMS = [0, 1, 3, 5, 8]; // intercept, head x, eye x, eye x squared, look x
-  const Y_TERMS = [0, 4, 6, 9]; // intercept, eye y, eye y squared, look y (head y is tied to head x)
-  const MAX_PX_PER_CM = 150;
+  // The cursor follows the eyes only; the head is for flicks. Each screen axis also
+  // sees just its own eye signals, since with few dots a free fit invents links.
+  const X_TERMS = [0, 3, 5, 8]; // intercept, eye x, eye x squared, look x
+  const Y_TERMS = [0, 4, 6, 9]; // intercept, eye y, eye y squared, look y
   const LOOK = {
     x: [['eyeLookOutLeft', 1], ['eyeLookInRight', 1], ['eyeLookInLeft', -1], ['eyeLookOutRight', -1]],
     y: [['eyeLookUpLeft', 1], ['eyeLookUpRight', 1], ['eyeLookDownLeft', -1], ['eyeLookDownRight', -1]],
@@ -65,16 +64,14 @@
     };
   }
 
-  // Where the gaze ray meets the screen plane, in camera-space cm. The webcam sits
-  // in that plane, so the head's position and the ray share one scale: this is why
-  // moving in the chair needs no training data. Calibration barely moves the head's
-  // position, so a learned weight for it could never come out right.
+  // Features in camera-space cm. Eye offsets scale with distance, because the same
+  // eye rotation covers more screen from further away.
   function geometry([ex, ey, yaw, pitch, tx, ty, tz, lookX = 0, lookY = 0]) {
     const distance = Math.max(-tz, MIN_DISTANCE_CM);
     return [
       tx + distance * Math.tan(yaw),
       ty - distance * Math.tan(pitch) / Math.cos(yaw),
-      distance * ex, // the same eye rotation covers more screen from further away
+      distance * ex,
       distance * ey,
       distance * lookX,
       distance * lookY,
@@ -125,13 +122,7 @@
     const mean = SCALE.map((_, i) => derived.reduce((a, d) => a + d[i], 0) / derived.length);
     const X = samples.map((s) => expand(s.f, mean));
     const wx = ridge(X, samples.map((s) => s.x), X_TERMS);
-    // Pixels are square, so a centimetre of head ray moves the cursor as far vertically
-    // as horizontally. Height is poorly seen by a webcam, so it borrows that scale, and
-    // up is always up: a higher ray means a higher point on the screen.
-    const pxPerCm = Math.min(Math.abs(wx[1]) / SCALE[0], MAX_PX_PER_CM);
-    const headY = -pxPerCm * SCALE[1];
-    const wy = ridge(X, samples.map((s, i) => s.y - headY * X[i][2]), Y_TERMS);
-    wy[2] = headY;
+    const wy = ridge(X, samples.map((s) => s.y), Y_TERMS);
     return { mean, wx, wy };
   }
 
@@ -149,8 +140,7 @@
   };
 
   // Fit, drop the worst 15% of each dot's frames (saccades, half-blinks), refit.
-  // Per dot, because a global cut throws out whole dots the first fit found hard,
-  // which are the head-turn dots: the model would then never learn the head.
+  // Per dot, because a global cut throws out whole dots the first fit found hard.
   function fit(samples) {
     const first = fitOnce(samples);
     const kept = [...new Set(samples.map((s) => s.point))].flatMap((point) => {
@@ -287,6 +277,12 @@
     };
   }
 
+  // The camera faces the user, so their right is the camera's left. Real calibration
+  // data confirmed this for yaw before the head left the gaze model.
+  function flickDirection(flick) {
+    return { 'yaw+': 'left', 'yaw-': 'right', 'pitch+': 'down', 'pitch-': 'up' }[flick];
+  }
+
   // The next item from `from` in a direction, inside a 45 degree cone. Staying in the
   // same row or column counts for more than being close, as people expect of arrows.
   function neighbourIn(direction, from, rects) {
@@ -305,11 +301,8 @@
     return best;
   }
 
-  // Head mode ignores the eyes, so it still works when they can't be seen well.
-  const headOnly = (f) => [0, 0, ...f.slice(2, 7)];
-
   const errorX = (model, s) => Math.abs(predict(model, s.f).x - s.x);
   const errorY = (model, s) => Math.abs(predict(model, s.f).y - s.y);
 
-  globalThis.GazeModel = { errorX, errorY, extractFeatures, fit, predict, crossValidate, createFilter, pickTarget, createHoldGesture, createHeadFlick, neighbourIn, headOnly };
+  globalThis.GazeModel = { errorX, errorY, extractFeatures, fit, predict, crossValidate, createFilter, pickTarget, createHoldGesture, createHeadFlick, flickDirection, neighbourIn };
 })();

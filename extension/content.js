@@ -5,27 +5,21 @@
   // A newly injected copy always takes over instead.
   window.__nungilDispose?.();
   (() => {
-    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, neighbourIn, headOnly } = GazeModel;
+    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, flickDirection, neighbourIn } = GazeModel;
 
     const SNAP_RADIUS = 140;
     const SWITCH_MS = 350;
     const DWELL_START_DELAY_MS = 500; // looking around shouldn't start a countdown
     const STICKY_PX = 50;
     const HOLD_RELEASE_PX = 220;
+    const HEAD_SETTLE_MS = 400;
+    const SPEECH_MAX_MS = 6000;
     const FLICK_FIND_RADIUS_PX = 260;
     const RAW_WINDOW = 5;
     const MAX_TARGET_VIEWPORT_SHARE = 0.4;
     const DWELL_COOLDOWN_MS = 1500;
     const GAZE_TIMEOUT_MS = 800;
     const EYES_CLOSED_RESET_MS = 400;
-    const AMBIGUITY_MIN_PX = 70;
-    const AMBIGUITY_MAX_PX = 180;
-    const ANCHOR_RADIUS_RATIO = 0.9;
-    const PANEL_MAX_ITEMS = 5;
-    const PANEL_LABEL_CHARS = 40;
-    const PANEL_DWELL_MS = 1000;
-    const PANEL_SETTLE_MS = 500;
-    const PANEL_TIMEOUT_MS = 15000;
     const MOUTH_MS = 900;
     const MOUTH_REPEAT_MS = 1000;
     const READER_MAX_PARAGRAPHS = 200;
@@ -48,9 +42,8 @@
 
     let settings = { ...NUNGIL_DEFAULTS };
     let eyeModel = null;
-    let headModel = null;
     const usable = (m) => (m?.version === NUNGIL_MODEL_VERSION ? m : null);
-    const activeModel = () => usable(settings.cursor === 'head' ? headModel : eyeModel);
+    const activeModel = () => usable(eyeModel);
     let bias = { x: 0, y: 0 }; // screen px, corrects drift since calibration
     let lastScreen = null; // smoothed gaze before bias
     let recentering = null; // { samples, collecting, point }
@@ -61,10 +54,11 @@
     let rawWindow = [];
     const headFlick = createHeadFlick();
     let holdAt = null; // where the gaze was when a flick chose the current item
+    let gazeMutedUntil = 0;
+    let speaking = false;
+    let speakingTimer = 0;
     let eyesClosedAt = null;
     let calibrateHintShown = false;
-    let dwellAnchor = null; // where the gaze has been resting, and since when
-    let panelItems = [];
     let reader = null; // { paragraphs, index, speakId, reading }
     let pendingAi = null; // { id, task, ...task details }
     let gaze = null;
@@ -104,9 +98,6 @@
         .help h2 { margin: 0 0 10px; font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
         .help div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: 13px; border-top: .5px solid rgba(0, 0, 0, .14); }
         .help b { color: #0071e3; font-weight: 600; }
-        .panel { position: fixed; inset: 0; display: none; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 3.5vmin; padding: 8vmin; background: rgba(0, 0, 0, .42); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); pointer-events: auto; animation: fade .24s cubic-bezier(.2, .8, .2, 1); }
-        .panel button { border: 0; border-radius: 24px; background: rgba(255, 255, 255, .92); color: #1d1d1f; font-size: clamp(20px, 2.8vmin, 32px); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; padding: 14px; word-break: keep-all; cursor: pointer; box-shadow: 0 12px 34px rgba(0, 0, 0, .22); animation: materialize .32s cubic-bezier(.2, .8, .2, 1); transition: transform .12s ease-out; }
-        .panel button:active { transform: scale(.97); }
         .reader { position: fixed; inset: 0; overflow-y: auto; padding: 72px 16px 140px; background: #fff; color: #1d1d1f; font-size: 22px; line-height: 1.6; letter-spacing: -.005em; display: none; pointer-events: auto; animation: fade .24s cubic-bezier(.2, .8, .2, 1); }
         .reader > * { max-width: 700px; margin: 0 auto 22px; }
         .reader h1, .reader .heading { font-weight: 700; letter-spacing: -.02em; }
@@ -115,7 +106,6 @@
         .reader mark { background: #0071e3; color: #fff; border-radius: 5px; padding: 0 2px; }
         @keyframes fade { from { opacity: 0; } }
         @keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } }
-        @keyframes materialize { from { opacity: 0; transform: scale(.94); } }
         @media (prefers-color-scheme: dark) {
           .reader { background: #000; color: #f5f5f7; }
           .reader .current { background: rgba(10, 132, 255, .2); box-shadow: 0 0 0 10px rgba(10, 132, 255, .2); }
@@ -123,24 +113,20 @@
           .help { background: rgba(44, 44, 46, .78); color: #f5f5f7; }
           .help div { border-top-color: rgba(255, 255, 255, .16); }
           .help b { color: #64aaff; }
-          .panel button { background: rgba(44, 44, 46, .94); color: #f5f5f7; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .box, .panel button { transition: none; }
-          .toast, .panel, .panel button, .reader { animation: none; }
+          .box { transition: none; }
+          .toast, .reader { animation: none; }
         }
         @media (prefers-reduced-transparency: reduce) {
           .toast { background: #1d1d1f; -webkit-backdrop-filter: none; backdrop-filter: none; }
           .help { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
-          .panel { background: rgba(0, 0, 0, .86); -webkit-backdrop-filter: none; backdrop-filter: none; }
         }
         @media (prefers-contrast: more) {
-          .panel button { background: #fff; color: #000; outline: 3px solid #000; }
           .box { box-shadow: 0 0 0 4px #000, 0 0 0 7px #fff; }
         }
       </style>
       <div class="reader"></div>
-      <div class="panel" role="menu"></div>
       <div class="box"></div>
       <div class="ring"></div>
       <div class="recenter"></div>
@@ -148,7 +134,7 @@
       <div class="help" role="dialog"></div>
       <div class="toast" role="status" aria-live="polite"></div>`;
     const $ = (s) => root.querySelector(s);
-    const ui = { box: $('.box'), ring: $('.ring'), badges: $('.badges'), reader: $('.reader'), panel: $('.panel'), recenter: $('.recenter'), toast: $('.toast'), help: $('.help') };
+    const ui = { box: $('.box'), ring: $('.ring'), badges: $('.badges'), reader: $('.reader'), recenter: $('.recenter'), toast: $('.toast'), help: $('.help') };
     // After an extension reload the old script is cut off but its overlay stays in
     // the page, which would leave a frozen cursor on screen.
     document.getElementById(host.id)?.remove();
@@ -178,11 +164,6 @@
       // The reader covers the page, so nothing underneath may be clicked.
       if (reader) {
         targets = [];
-        return;
-      }
-      // An open panel is modal: gaze can only land on its choices.
-      if (panelItems.length) {
-        targets = panelItems.map((el) => ({ el, rect: el.getBoundingClientRect() }));
         return;
       }
       const next = [];
@@ -228,19 +209,7 @@
       drawBox();
     }
 
-    // Signs come from this user's own calibration, so a mirrored camera can't reverse
-    // them. Screen x and y run opposite to camera x and y if the model learned nothing.
-    function flickDirection(flick, model) {
-      const sx = Math.sign(model.wx[1]) || -1;
-      const sy = Math.sign(model.wy[2]) || -1;
-      if (flick === 'yaw+') return sx > 0 ? 'right' : 'left';
-      if (flick === 'yaw-') return sx > 0 ? 'left' : 'right';
-      // Raised pitch lowers the ray.
-      if (flick === 'pitch+') return sy > 0 ? 'up' : 'down';
-      return sy > 0 ? 'down' : 'up';
-    }
-
-    function moveByFlick(flick, model, now) {
+    function moveByFlick(flick, now) {
       const list = targets;
       const rects = list.map((c) => c.rect);
       let from = list.find((c) => c.el === target)?.rect;
@@ -249,14 +218,13 @@
         if (i < 0) return;
         from = rects[i];
       }
-      const next = neighbourIn(flickDirection(flick, model), from, rects);
+      const next = neighbourIn(flickDirection(flick), from, rects);
       if (next < 0) return; // nothing that way: the highlight staying put says so
       // Choosing this item says the gaze was off by this much.
       learnDrift(gaze, list[next].el);
       setTarget(list[next].el, now);
       candidate = null;
       holdAt = { x: gaze.x, y: gaze.y };
-      dwellAnchor = null;
     }
 
     function updateTarget(point, now) {
@@ -274,78 +242,25 @@
       if (now - candidateSince >= SWITCH_MS) { candidate = null; setTarget(el, now); }
     }
 
-    // How far off gaze can be on this calibration: everything this close to it could
-    // be what the user means.
-    const ambiguityRadius = () => Math.max(AMBIGUITY_MIN_PX, Math.min(AMBIGUITY_MAX_PX, (activeModel()?.errorPx ?? AMBIGUITY_MIN_PX) * 0.8));
-
-    function nearbyTargets(point, radius) {
-      const near = targets
-        .map(({ el, rect: r }) => ({
-          el,
-          rect: r,
-          dist: Math.hypot(Math.max(r.left - point.x, 0, point.x - r.right), Math.max(r.top - point.y, 0, point.y - r.bottom)),
-        }))
-        .filter((c) => c.dist <= radius)
-        .sort((p, q) => p.dist - q.dist);
-      // A list item wrapping a link is one choice, not two.
-      return near.filter((c) => !near.some((o) => o !== c && c.el.contains(o.el))).map((c) => c.el);
-    }
-
     function drawRing(x, y, progress) {
       const deg = Math.round(progress * 360);
       ui.ring.style.cssText = `display:block;left:${x}px;top:${y}px;`
         + `background:conic-gradient(#0071e3 ${deg}deg, rgba(255,255,255,.75) ${deg}deg)`;
     }
 
-    function updatePanelDwell(now) {
-      if (!target || targetRisky || now < dwellBlockedUntil) { ui.ring.style.display = 'none'; return; }
-      const progress = (now - Math.max(targetSince, dwellBlockedUntil) - DWELL_START_DELAY_MS) / PANEL_DWELL_MS;
+    function updateDwell(now) {
+      const idle = !settings.dwell || !target || targetRisky || agentRunning || numbered.length || recentering || reader || now < dwellBlockedUntil;
+      if (idle) { ui.ring.style.display = 'none'; return; }
+      const progress = (now - Math.max(targetSince, dwellBlockedUntil) - DWELL_START_DELAY_MS) / settings.dwellMs;
       if (progress < 0) { ui.ring.style.display = 'none'; return; }
       if (progress >= 1) {
         ui.ring.style.display = 'none';
         dwellBlockedUntil = now + DWELL_COOLDOWN_MS;
-        activate(target);
+        activate(target); // a dwell can be accidental, so it teaches nothing about drift
         return;
       }
       const r = target.getBoundingClientRect();
       drawRing(r.left + r.width / 2, r.top + r.height / 2, progress);
-    }
-
-    // Timed on where the gaze rests, not on which item is under it. Noise flips the
-    // nearest item constantly in a navbar, so a per-item timer would never finish.
-    function updateDwell(now) {
-      if (panelItems.length) { if (settings.dwell) updatePanelDwell(now); return; }
-      const idle = !settings.dwell || agentRunning || numbered.length || recentering || reader || now < dwellBlockedUntil;
-      if (idle) { ui.ring.style.display = 'none'; return; }
-
-      if (!dwellAnchor || Math.hypot(gaze.x - dwellAnchor.x, gaze.y - dwellAnchor.y) > ambiguityRadius() * ANCHOR_RADIUS_RATIO) {
-        dwellAnchor = { x: gaze.x, y: gaze.y, since: now };
-      }
-      const near = holdAt ? [] : nearbyTargets(gaze, ambiguityRadius());
-      const candidates = near.length ? near : target ? [target] : [];
-      if (!candidates.length || (candidates.length === 1 && isRisky(candidates[0]))) {
-        ui.ring.style.display = 'none';
-        return;
-      }
-      const group = candidates.length > 1;
-      // One item: timed from when it was highlighted, so the wait is one the user can
-      // see. A group has no stable highlight, so it's timed from where the gaze rests.
-      if (!group && candidates[0] !== target) { ui.ring.style.display = 'none'; return; }
-      const started = Math.max(group ? dwellAnchor.since : targetSince, dwellBlockedUntil);
-      const progress = (now - started - DWELL_START_DELAY_MS) / settings.dwellMs;
-      if (progress < 0) { ui.ring.style.display = 'none'; return; }
-      if (progress >= 1) {
-        ui.ring.style.display = 'none';
-        dwellBlockedUntil = now + DWELL_COOLDOWN_MS;
-        dwellAnchor = null;
-        if (group) openPanel(candidates);
-        else activate(candidates[0]); // a dwell can be accidental, so it teaches nothing about drift
-        return;
-      }
-      // The ring stays put on the highlighted item, or where the gaze settled.
-      const r = (group ? target : candidates[0])?.getBoundingClientRect();
-      if (r) drawRing(r.left + r.width / 2, r.top + r.height / 2, progress);
-      else drawRing(dwellAnchor.x, dwellAnchor.y, progress);
     }
 
     function onFrame(msg) {
@@ -375,10 +290,23 @@
         return; // hold position through blinks
       }
       eyesClosedAt = null;
-      const raw = predict(model, settings.cursor === 'head' ? headOnly(msg.features) : msg.features);
-      const motion = settings.flick && !msg.mouthOpen && !agentRunning && !recentering
-        ? headFlick(msg.features[2], msg.features[3], now)
-        : { flick: null, moving: false };
+      // Head motion throws the eye signals off, so gaze input stops until it's over:
+      // the highlight, the dwell and the smoothing all carry on from before it.
+      const motion = headFlick(msg.features[2], msg.features[3], now);
+      if (motion.moving || motion.flick) gazeMutedUntil = now + HEAD_SETTLE_MS;
+      // Talking moves the face and the eyes. The highlight stays, so "클릭" presses what
+      // was being looked at. While the AI works the user may still be watching it.
+      if (speaking && !agentRunning && !pendingAi) gazeMutedUntil = now + HEAD_SETTLE_MS;
+      if (motion.flick && settings.flick && !msg.mouthOpen && !agentRunning && !recentering) moveByFlick(motion.flick, now);
+      if (now < gazeMutedUntil) {
+        dwellBlockedUntil = Math.max(dwellBlockedUntil, gazeMutedUntil);
+        rawWindow = [];
+        filter = createFilter();
+        ui.ring.style.display = 'none';
+        drawBox();
+        return;
+      }
+      const raw = predict(model, msg.features);
       if (recentering?.collecting) recentering.samples.push(raw);
       // Median first: a single wild frame would otherwise jolt the highlight.
       rawWindow = [...rawWindow.slice(1 - RAW_WINDOW), raw];
@@ -389,10 +317,8 @@
         y: Math.max(0, Math.min(innerHeight - 1, v.y)),
       };
       gazeAt = now;
-      if (motion.flick) moveByFlick(motion.flick, model, now);
       if (holdAt && Math.hypot(gaze.x - holdAt.x, gaze.y - holdAt.y) > HOLD_RELEASE_PX) holdAt = null;
-      // A flick moves the head, which moves the gaze: the highlight must not chase it.
-      if (!motion.moving && !motion.flick && !holdAt) updateTarget(gaze, now);
+      if (!holdAt) updateTarget(gaze, now);
       drawBox();
       updateDwell(now);
     }
@@ -444,45 +370,6 @@
       const label = el.getAttribute('aria-label') || el.innerText?.trim() || (isButtonInput && el.value)
         || el.querySelector?.('img[alt]')?.alt || el.getAttribute('title') || el.getAttribute('placeholder') || '';
       return label.replace(/\s+/g, ' ');
-    }
-
-    // Webcam gaze can't tell neighbours in a navbar apart, but it can easily tell
-    // these apart: the choices move to the middle of the screen, large and far from
-    // each other.
-    function openPanel(els) {
-      hideNumbers();
-      const chosen = els.slice(0, PANEL_MAX_ITEMS);
-      const from = gaze;
-      const pick = (el) => () => {
-        hideNumbers();
-        learnDrift(from, el);
-        activate(el);
-      };
-      const entries = chosen.map((el, i) => [`${i + 1}. ${labelOf(el).slice(0, PANEL_LABEL_CHARS) || t.panelItem}`, pick(el)]);
-      entries.push([`${entries.length + 1}. ${t.panelCancel}`, hideNumbers]);
-      panelItems = entries.map(([label, action]) => {
-        const b = document.createElement('button');
-        b.textContent = label;
-        b.addEventListener('click', action);
-        return b;
-      });
-      ui.panel.replaceChildren(...panelItems);
-      ui.panel.style.gridTemplateColumns = `repeat(${panelItems.length <= 4 ? 2 : 3}, 1fr)`;
-      ui.panel.style.display = 'grid';
-      numbered = panelItems;
-      setTarget(null, performance.now());
-      lastTarget = null;
-      dwellBlockedUntil = performance.now() + PANEL_SETTLE_MS;
-      numbersTimer = setTimeout(hideNumbers, PANEL_TIMEOUT_MS);
-      refreshTargets();
-    }
-
-    function closePanel() {
-      if (!panelItems.length) return;
-      panelItems = [];
-      ui.panel.replaceChildren();
-      ui.panel.style.display = 'none';
-      refreshTargets();
     }
 
     function saveBias(next) {
@@ -805,7 +692,6 @@
       numbered = [];
       ui.badges.replaceChildren();
       clearTimeout(numbersTimer);
-      closePanel();
     }
 
     function addBadge(el, i) {
@@ -881,11 +767,8 @@
         case 'click': {
           // A highlight left over from an unusable model says nothing about the gaze.
           if (!activeModel()) { toast(t.calibrateFirst); break; }
-          // Saying "click" over a group can't mean any one item yet, so it asks which.
-          const group = !panelItems.length && gazeIsFresh() ? nearbyTargets(gaze, ambiguityRadius()) : [];
           const el = currentTarget();
-          if (group.length > 1) openPanel(group);
-          else if (el) clickByGaze(el);
+          if (el) clickByGaze(el);
           else toast(activeModel() ? t.noTarget : t.calibrateFirst);
           break;
         }
@@ -946,6 +829,13 @@
         onFrame(msg);
       } else if (msg.type === 'command') diag.commands++;
       if (msg.type === 'frame') return;
+      if (msg.type === 'speech') {
+        speaking = msg.active;
+        clearTimeout(speakingTimer);
+        // Chrome doesn't always report the end of speech; eyes must never stay off.
+        if (speaking) speakingTimer = setTimeout(() => { speaking = false; }, SPEECH_MAX_MS);
+        return;
+      }
       if (msg.type === 'tts-event') onTtsEvent(msg);
       else if (msg.type === 'ai-event') onAiEvent(msg);
       else if (msg.type === 'command') {
@@ -964,13 +854,12 @@
       ui.help.style.display = 'none';
     }
 
-    function applyStored({ settings: s, model: m, modelHead: h, gazeBias: b }) {
+    function applyStored({ settings: s, model: m, gazeBias: b }) {
       if (b !== undefined) bias = b ?? { x: 0, y: 0 };
       if (s !== undefined) {
         // Start the dwell timer fresh, or switching dwell on would instantly
         // click whatever the user happens to be looking at.
         if (s.dwell && !settings.dwell) dwellBlockedUntil = performance.now();
-        if ((s.cursor ?? NUNGIL_DEFAULTS.cursor) !== settings.cursor) filter = createFilter();
         settings = { ...NUNGIL_DEFAULTS, ...s };
         if (!settings.enabled) clearOverlay();
       }
@@ -978,13 +867,9 @@
         eyeModel = m;
         filter = createFilter();
       }
-      if (h !== undefined) {
-        headModel = h;
-        filter = createFilter();
-      }
     }
 
-    chrome.storage.local.get(['settings', 'model', 'modelHead', 'gazeBias']).then(applyStored);
+    chrome.storage.local.get(['settings', 'model', 'gazeBias']).then(applyStored);
     addEventListener('pagehide', () => {
       if (reader?.reading) chrome.runtime.sendMessage({ type: 'tts-stop' }).catch(() => {});
     }, { signal: pageEvents.signal });
@@ -992,7 +877,6 @@
       if (area !== 'local') return;
       if (changes.settings) applyStored({ settings: changes.settings.newValue ?? {} });
       if (changes.model) applyStored({ model: changes.model.newValue ?? null });
-      if (changes.modelHead) applyStored({ modelHead: changes.modelHead.newValue ?? null });
       if (changes.gazeBias) applyStored({ gazeBias: changes.gazeBias.newValue ?? null });
     };
     chrome.storage.onChanged.addListener(onStorageChange);
@@ -1010,9 +894,8 @@
         page: {
           ...diag,
           enabled: settings.enabled,
-          cursorMode: settings.cursor,
           model: Boolean(activeModel()),
-          calibration: { all: activeModel()?.errorPx, eye: activeModel()?.eyeErrorPx, eyeX: activeModel()?.eyeErrorX, eyeY: activeModel()?.eyeErrorY, head: activeModel()?.headErrorPx },
+          calibration: { all: activeModel()?.errorPx, x: activeModel()?.errorX, y: activeModel()?.errorY },
           gaze: gaze && { x: Math.round(gaze.x), y: Math.round(gaze.y) },
           viewport: { w: innerWidth, h: innerHeight },
           targets: targets.length,

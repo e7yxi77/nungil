@@ -28,9 +28,13 @@
       send({ type: 'status', patch: { voice: 'listening' } });
     };
 
+    rec.onspeechstart = () => send({ type: 'speech', active: true });
+    rec.onspeechend = () => send({ type: 'speech', active: false });
+
     rec.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (!event.results[i].isFinal) continue;
+        send({ type: 'speech', active: false });
         const alternatives = [...event.results[i]].map((a) => a.transcript);
         const hit = alternatives.map((t) => [t, Commands.parseCommand(t)]).find(([, c]) => c);
         if (hit) send({ type: 'command', command: hit[1], transcript: hit[0].trim() });

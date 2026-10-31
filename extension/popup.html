@@ -41,9 +41,6 @@
   <label class="row"><span>고개 까딱<br><small>빠르게 까딱한 방향의 옆 항목으로 이동</small></span><input type="checkbox" id="flick"></label>
   <label class="row"><span>AI 자동 수행<br><small>"지메일 들어가서 메일 작성해줘" (로그인 필요)</small></span><input type="checkbox" id="agent"></label>
   <label class="row"><span>소리 조작<br><small>"팝" 클릭 · 허밍 스크롤 (음성 명령 꺼짐)</small></span><input type="checkbox" id="sound"></label>
-  <label class="row"><span>커서</span>
-    <select id="cursor"><option value="eyes">눈 + 머리</option><option value="head">머리만</option></select>
-  </label>
   <dl>
     <dt>카메라</dt><dd id="camera">-</dd>
     <dt>얼굴</dt><dd id="face">-</dd>
@@ -53,6 +50,7 @@
   <button id="recenter" class="secondary">시선 맞춤 (2초)</button>
   <button id="calibrate">시선 교정</button>
   <button id="codex" class="secondary">ChatGPT 로그인 (AI 기능)</button>
+  <button id="guide" class="secondary">사용법 보기</button>
   <p>카메라는 기기 안에서만 처리돼요. 음성은 크롬 음성 인식 서비스로 전송될 수 있어요.</p>
   <p>로그인하면 AI 기능을 쓸 때 페이지 본문이나 화면의 항목 이름, AI 자동 수행 중에는 말한 내용과 페이지 주소가 내 ChatGPT 계정으로 전송돼요. 입력 칸의 내용은 보내지 않아요. 비공식 연결 방식이라 언제든 멈출 수 있어요.</p>
   <script src="lib/strings.js"></script>
