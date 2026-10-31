@@ -18,7 +18,7 @@
     powerOn: ['눈길켜줘', '눈길켜', '눈길켜기', '눈길켜주세요', '눈길시작', '눈낄켜줘'],
     powerOff: ['눈길꺼줘', '눈길꺼', '눈길끄기', '눈길꺼주세요', '눈길종료', '눈낄꺼줘'],
     next: ['다음', '다음으로', '넘어가', '시작하기', 'next'],
-    recenter: ['시선맞춤', '시선맞추기', '재교정', '영점', 'recenter', 'realign'],
+    recenter: ['교정', '시선교정', '시선맞춤', '시선맞추기', '재교정', '영점', 'recenter', 'realign'],
     pause: ['멈춰', '정지', '일시정지', 'pause', 'stop'],
     resume: ['다시시작', '시작', '재개', 'resume', 'start'],
     help: ['도움말', '명령어', 'help'],
@@ -47,8 +47,7 @@
     return null;
   }
 
-  // Free-form requests go to the AI, so they must end in an explicit action verb.
-  // Anything else near the mic stays ignored, and is never sent anywhere.
+  // Requests ending in an action verb, which name something on screen.
   const FIND_KO = /^(.+?)\s*(눌러\s*줘|눌러\s*주세요|눌러|클릭\s*해\s*줘|클릭\s*해\s*주세요|클릭\s*해|열어\s*줘|열어\s*주세요|열어|찾아\s*줘|찾아\s*주세요|찾아)$/;
   const FIND_EN = /^(click|press|open|find)\s+(?:on\s+)?(.+)$/i;
   const DEMONSTRATIVES = new Set(['이거', '저거', '그거', '이것', '저것', '그것', '여기', 'this', 'that', 'it']);
@@ -65,18 +64,27 @@
     return { name: 'find', query, text, click: !/^(찾아|find)/.test(verb) };
   }
 
-  // A whole task for the AI to carry out. The same rule as above: it must be phrased
-  // as a request, and long enough not to be a stray remark.
-  const AGENT_KO = /(해\s*줘|해\s*주세요|줘|주세요)$/;
-  const AGENT_EN = /^(go to|search for|compose|write an?)\s+\S/i;
-  const AGENT_MIN_CHARS = 8;
+  const AGENT_MIN_CHARS = 4; // shorter than this is usually "네", "음", or a misheard word
+  const withoutEnd = (text) => text.replace(/[.!?。]+$/, '');
+  const WAKE = /^(?:헤이|해이|에이|hey|hi)[\s,]*(?:눈\s*길|눈낄|nungil)[\s,.!?]*(.*)$/i;
 
-  function parseAgent(text) {
-    if (text.replace(/\s/g, '').length < AGENT_MIN_CHARS) return null;
-    return AGENT_KO.test(text) || AGENT_EN.test(text) ? { name: 'agent', goal: text } : null;
+  // Whatever isn't one of the commands above goes to the AI as a task. Saying the name
+  // first only makes it explicit, which matters in the few places silence is otherwise kept.
+  function parseCommand(transcript) {
+    const heard = transcript.trim();
+    const wake = heard.match(WAKE);
+    if (wake) return parseRequest(wake[1].trim());
+    const local = parseLocal(heard);
+    if (local) return local;
+    return heard.replace(/[\s.,!?。]/g, '').length >= AGENT_MIN_CHARS ? { name: 'agent', goal: withoutEnd(heard), wake: false } : null;
   }
 
-  function parseCommand(transcript) {
+  function parseRequest(request) {
+    if (!request) return { name: 'wake' };
+    return parseLocal(request) ?? { name: 'agent', goal: withoutEnd(request), wake: true };
+  }
+
+  function parseLocal(transcript) {
     const raw = transcript.trim();
     const typed = raw.match(/^(?:입력|타이핑|type)\s+(.+)$/i);
     if (typed) return { name: 'type', text: typed[1] };
@@ -92,8 +100,28 @@
     const n = parseNumber(withClick ? withClick[1] ?? withClick[2] : s);
     if (n) return { name: 'number', n };
     const sentence = raw.replace(/[.!?。]+$/, '');
-    return parseFind(sentence) ?? parseAgent(sentence);
+    return parseFind(sentence);
   }
 
-  globalThis.Commands = { parseCommand };
+  // Saying the name alone opens a short window for the request itself.
+  function createListener({ windowMs = 8000 } = {}) {
+    let awakeUntil = 0;
+    return (alternatives, now) => {
+      const awake = now < awakeUntil;
+      awakeUntil = 0;
+      const parse = (heard) => (awake && !WAKE.test(heard.trim()) ? parseRequest(heard.trim()) : parseCommand(heard));
+      // A plain command in any alternative beats the AI reading of the best guess.
+      const AI_READINGS = new Set(['agent', 'find']);
+      const plain = alternatives.find((heard) => {
+        const command = parse(heard);
+        return command && !AI_READINGS.has(command.name);
+      });
+      const chosen = plain ?? alternatives[0];
+      const command = parse(chosen);
+      if (command?.name === 'wake') awakeUntil = now + windowMs;
+      return { command, transcript: chosen.trim() };
+    };
+  }
+
+  globalThis.Commands = { parseCommand, createListener };
 })();

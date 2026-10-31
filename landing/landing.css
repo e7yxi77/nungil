@@ -1,0 +1,139 @@
+/* One dark room: a fixed 3D stage with the story stepping over it. */
+:root {
+  --ink: #04070f;
+  --navy: #081024;
+  --blue: #2f7bff;
+  --blue-hi: #5b98ff;
+  --cyan: #7fe7ff;
+  --white: #f4f7ff;
+  --muted: #a3b3d1;
+  --line: rgba(150, 190, 255, .16);
+  --glass: rgba(16, 27, 54, .5);
+  --glass-edge: rgba(190, 215, 255, .18);
+  --font: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
+  --gutter-l: max(20px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(20px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--ink); overscroll-behavior: none; }
+body { margin: 0; background: var(--ink); color: var(--white); font: 400 17px/1.55 var(--font); letter-spacing: -.012em; word-break: keep-all; overflow-wrap: break-word; -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+ul, ol { list-style: none; margin: 0; padding: 0; }
+:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
+.skip { position: absolute; left: -999px; top: 8px; background: var(--blue); color: #fff; padding: 10px 16px; border-radius: 10px; font-weight: 600; z-index: 30; }
+.skip:focus { left: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+h1, h2, h3 { margin: 0; font-weight: 700; text-wrap: balance; }
+h1 { font-size: clamp(46px, 7.4vw, 112px); line-height: 1.04; letter-spacing: -.045em; }
+h2 { font-size: clamp(32px, 4.3vw, 64px); line-height: 1.1; letter-spacing: -.04em; }
+h3 { font-size: 21px; line-height: 1.3; letter-spacing: -.025em; }
+.eyebrow { margin: 0; color: var(--cyan); font-size: 14px; font-weight: 600; letter-spacing: 0; }
+.lede { margin: 0; font-size: clamp(19px, 1.9vw, 26px); line-height: 1.38; letter-spacing: -.022em; color: var(--white); text-wrap: balance; }
+.body { margin: 0; color: var(--muted); font-size: clamp(16px, 1.25vw, 19px); line-height: 1.5; max-width: 34em; }
+.note { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+
+.btn { display: inline-block; padding: 14px 26px; border-radius: 980px; font-size: 17px; font-weight: 600; letter-spacing: -.015em; background: var(--blue); color: #fff; box-shadow: 0 0 32px rgba(47, 123, 255, .45); transition: transform .12s ease-out, background .2s; }
+.btn:hover { background: var(--blue-hi); }
+.btn:active { transform: scale(.97); }
+.btn.ghost { background: var(--glass); box-shadow: inset 0 0 0 1px var(--glass-edge); -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); }
+.btn.ghost:hover { background: rgba(40, 60, 105, .6); }
+
+.bar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; padding-top: env(safe-area-inset-top, 0px); background: rgba(6, 11, 24, .55); -webkit-backdrop-filter: blur(22px) saturate(170%); backdrop-filter: blur(22px) saturate(170%); box-shadow: inset 0 -1px 0 var(--line); transition: opacity .35s, transform .35s; }
+.bar.tucked:not(:focus-within) { opacity: 0; transform: translateY(-100%); }
+nav { display: flex; align-items: center; gap: 24px; height: 52px; max-width: 1280px; margin: 0 auto; padding-left: var(--gutter-l); padding-right: var(--gutter-r); }
+.brand { font-weight: 700; font-size: 19px; letter-spacing: -.03em; margin-right: auto; }
+.bar-cta { padding: 6px 14px; border-radius: 980px; background: var(--blue); color: #fff; font-size: 14px; font-weight: 600; }
+
+/* The film. Everything reads top to bottom on its own; .has-3d stretches it into scroll track. */
+.film { position: relative; background: radial-gradient(ellipse at 50% 0, #0e1c3f, transparent 70%); }
+.stage { display: none; }
+.beat { position: relative; }
+.pin { position: relative; display: flex; padding: 88px var(--gutter-r) 64px var(--gutter-l); }
+.copy { display: flex; flex-direction: column; gap: 18px; min-width: 0; position: relative; }
+.beat-hero .copy, .beat-final .copy { margin: 0 auto; align-items: center; text-align: center; max-width: 960px; }
+.beat-hero .eyebrow { font-size: clamp(20px, 2vw, 28px); font-weight: 700; letter-spacing: -.03em; color: var(--white); }
+.beat-hero h1, .beat-final h2 { text-shadow: 0 2px 40px rgba(2, 6, 18, .7); }
+.beat-final h2 { font-size: clamp(32px, min(5.4vw, 9vh), 84px); }
+.beat-final .lede { font-size: clamp(17px, min(1.9vw, 3.4vh), 26px); }
+.beat-final .copy { gap: clamp(8px, 1.8vh, 18px); }
+.hint { display: none; }
+.transcript { display: none; }
+
+.has-3d .stage { display: block; position: sticky; top: 0; height: 100vh; height: 100svh; margin-bottom: -100vh; margin-bottom: -100svh; overflow: hidden; background: var(--ink); }
+.has-3d #gl { display: block; width: 100%; height: 100%; opacity: 0; transition: opacity .6s; }
+.has-3d #gl.ready { opacity: 1; }
+.stage-shade { position: absolute; inset: 0; pointer-events: none; opacity: var(--shade, 1); background: radial-gradient(ellipse 78% 66% at 50% 50%, rgba(3, 7, 18, .86), rgba(3, 7, 18, .52) 72%, rgba(3, 7, 18, .2)); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.stage-shade[data-off] { display: none; }
+
+.has-3d .film { background: none; }
+.has-3d .film { overflow-x: clip; }
+/* Each beat overlaps the last by one screen, so pins swap in place and never scroll away mid-scene. */
+.has-3d .beat { height: calc(var(--len, 300vh) + 100vh); height: calc(var(--len, 300vh) + 100svh); pointer-events: none; }
+.has-3d .beat + .beat { margin-top: -100vh; margin-top: -100svh; }
+.has-3d .beat-hero { --len: 170vh; }
+.has-3d .beat[data-beat="1"] { --len: 340vh; }
+.has-3d .beat[data-beat="2"] { --len: 360vh; }
+.has-3d .beat[data-beat="3"] { --len: 420vh; }
+.has-3d .beat-final { --len: 240vh; }
+.has-3d .pin { position: sticky; top: 0; height: 100vh; height: 100svh; padding: 76px var(--gutter-r) 40px var(--gutter-l); opacity: var(--show, 1); }
+.has-3d .pin a { pointer-events: auto; }
+.has-3d .pin[data-off] a { pointer-events: none; }
+
+.has-3d .beat-hero .pin { align-items: center; justify-content: center; }
+.has-3d .beat-final .pin { align-items: flex-end; justify-content: center; padding-bottom: min(7vh, 56px); }
+.has-3d .beat-side .pin { align-items: center; }
+.has-3d .beat-side .copy { width: min(35vw, 520px); margin-left: clamp(0px, 3.4vw, 72px); }
+.has-3d .beat-side .copy::before { content: ""; position: absolute; inset: -30% -28% -30% -50vw; z-index: -1; background: radial-gradient(ellipse at 30% 50%, rgba(3, 7, 18, .78), transparent 68%); pointer-events: none; }
+
+.hint { position: absolute; left: 50%; bottom: max(26px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); margin: 0; color: var(--muted); font-size: 13px; }
+.has-3d .hint { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.hint span { display: block; width: 1px; height: 30px; order: 2; background: linear-gradient(var(--cyan), transparent); transform-origin: top; animation: drip 2.4s ease-in-out infinite; }
+@keyframes drip { 0% { transform: scaleY(0); } 55% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
+
+.trail { display: grid; gap: 2px; counter-reset: t; }
+.trail li { position: relative; padding: 9px 0 9px 28px; color: var(--muted); font-size: 16px; line-height: 1.35; transition: color .25s; }
+.trail li::before { content: ""; position: absolute; left: 4px; top: 15px; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--muted); transition: background .25s, box-shadow .25s; }
+.trail li.on { color: var(--white); }
+.trail li.on::before { background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
+
+.said { display: flex; flex-wrap: wrap; gap: 8px; }
+.said li { padding: 7px 13px; border-radius: 12px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--glass-edge); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: 15px; line-height: 1.35; color: var(--muted); transition: color .25s, box-shadow .25s; }
+.said li.on { color: var(--white); box-shadow: inset 0 0 0 1px var(--blue-hi), 0 0 22px rgba(47, 123, 255, .4); }
+
+.has-3d .transcript { display: flex; align-items: center; gap: 12px; position: absolute; left: 66%; bottom: 8vh; transform: translateX(-50%); margin: 0; max-width: min(56vw, 640px); padding: 12px 22px; border-radius: 20px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--glass-edge), 0 18px 50px rgba(0, 0, 0, .35); -webkit-backdrop-filter: blur(22px) saturate(170%); backdrop-filter: blur(22px) saturate(170%); font-size: clamp(16px, 1.5vw, 22px); font-weight: 500; letter-spacing: -.02em; white-space: nowrap; }
+.transcript i { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
+.transcript span:empty::before { content: "듣는 중"; color: var(--muted); }
+
+.cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 8px; }
+
+/* Tall and narrow: copy on top, the room framed below it. */
+@media (max-aspect-ratio: 1/1) {
+  .has-3d .beat-side .pin { align-items: flex-start; padding-top: 64px; }
+  .has-3d .beat-side .copy { width: 100%; margin-left: 0; gap: 10px; }
+  .has-3d .beat-side .copy::before { inset: -60px -40px -20px; background: linear-gradient(rgba(3, 7, 18, .88) 60%, transparent); }
+  .has-3d .beat-side .body { font-size: 15px; }
+  .has-3d .trail li { padding-block: 3px; font-size: 14px; }
+  .has-3d .trail li::before { top: 8px; }
+  .has-3d .said li { padding: 5px 10px; font-size: 13px; }
+  .has-3d .said-more, .has-3d .beat-side .note { display: none; }
+  .has-3d .transcript { left: 50%; bottom: 6vh; max-width: calc(100vw - 32px); font-size: 15px; padding: 10px 16px; }
+  .has-3d .beat-final .pin { padding-bottom: 5vh; }
+}
+@media (max-width: 720px) {
+  .cta .btn { width: 100%; text-align: center; }
+  .cta { width: 100%; }
+}
+@media (max-height: 640px) and (min-aspect-ratio: 1/1) {
+  .has-3d .said-more, .has-3d .beat-side .body { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+  .has-3d #gl { transition: opacity .2s !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .bar, .btn.ghost, .said li, .has-3d .transcript { background: var(--navy); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

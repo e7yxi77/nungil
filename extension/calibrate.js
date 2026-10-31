@@ -25,6 +25,7 @@ const SCAN_TICKS = 72;
 const SCAN_FILL_FRAMES = 30;
 const SCAN_DECAY_FRAMES = 3;
 let scanFrames = 0;
+let calibrating = false;
 
 function buildTicks(svg, count) {
   const NS = 'http://www.w3.org/2000/svg';
@@ -54,7 +55,7 @@ function updateScan(face) {
   lightTicks(scanTicks, scanFrames / SCAN_FILL_FRAMES);
   const full = scanFrames === SCAN_FILL_FRAMES;
   $('scan').classList.toggle('full', full);
-  $('begin').disabled = !full;
+  if (!calibrating) $('begin').disabled = !full;
   $('faceState').textContent = full
     ? '좋아요. 얼굴을 찾았어요'
     : face ? '그대로 잠시 있어 주세요…' : '얼굴을 찾는 중… 카메라를 바라봐 주세요';
@@ -62,7 +63,8 @@ function updateScan(face) {
 
 // Whichever main button is showing, so "다음" works for people who can't press it.
 function pressMain() {
-  const button = ['allow', 'begin', 'finish'].map($).find((b) => b.offsetParent && !b.disabled);
+  if (calibrating) return;
+  const button = ['allow', 'begin', 'finish'].map(id => $(id)).find((b) => b.offsetParent && !b.disabled);
   button?.click();
 }
 
@@ -167,6 +169,18 @@ function describeError(px) {
 }
 
 async function runCalibration() {
+  // Two runs at once would overwrite each other's samples. A spoken "다음" can ask for one,
+  // because the start button is only covered up during a run, not gone.
+  if (calibrating) return;
+  calibrating = true;
+  try {
+    await calibrate();
+  } finally {
+    calibrating = false;
+  }
+}
+
+async function calibrate() {
   $('begin').disabled = true;
   stopPreview();
   await document.documentElement.requestFullscreen?.().catch(() => {});

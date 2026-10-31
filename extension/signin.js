@@ -7,7 +7,7 @@ function succeed() {
   if (settled) return;
   settled = true;
   $('title').textContent = '로그인 완료';
-  $('message').textContent = '이제 "로그인 버튼 눌러줘"나 "단순 보기"라고 말해 보세요. 이 탭은 닫아도 돼요.';
+  $('message').textContent = '이제 "로그인 버튼 눌러줘"라고 말해 보세요. 이 탭은 닫아도 돼요.';
 }
 
 function fail(reason) {

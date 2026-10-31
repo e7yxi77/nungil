@@ -316,7 +316,8 @@ async function agentAsk(goal, history, snapshot) {
   return reply;
 }
 
-async function runAgent(goal, tabId) {
+async function runAgent(goal, tabId, quiet) {
+  if (quiet && !(await getValidAuth())) return;
   if (agentRun) agentRun.cancelled = true;
   const run = { cancelled: false };
   agentRun = run;
@@ -384,7 +385,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (fromExtensionPage(sender)) logout();
       break;
     case 'agent-start':
-      if (sender.tab?.id) runAgent(msg.goal, sender.tab.id);
+      if (sender.tab?.id) runAgent(msg.goal, sender.tab.id, msg.quiet);
       break;
     case 'agent-stop':
       if (agentRun) {

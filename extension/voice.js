@@ -8,6 +8,7 @@
   const IGNORED = new Set(['no-speech', 'aborted']);
   let stopped = false;
   let retryMs = 300;
+  const listen = Commands.createListener();
 
   const send = (msg) => chrome.runtime.sendMessage(msg).catch(() => {});
 
@@ -36,9 +37,9 @@
         if (!event.results[i].isFinal) continue;
         send({ type: 'speech', active: false });
         const alternatives = [...event.results[i]].map((a) => a.transcript);
-        const hit = alternatives.map((t) => [t, Commands.parseCommand(t)]).find(([, c]) => c);
-        if (hit) send({ type: 'command', command: hit[1], transcript: hit[0].trim() });
-        else send({ type: 'transcript', transcript: alternatives[0].trim() });
+        const { command, transcript } = listen(alternatives, Date.now());
+        if (command) send({ type: 'command', command, transcript });
+        else send({ type: 'transcript', transcript });
       }
     };
 

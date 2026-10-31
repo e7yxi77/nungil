@@ -14,6 +14,8 @@
     const STICKY_PX = 80;
     const HOLD_RELEASE_PX = 220;
     const HEAD_SETTLE_MS = 250;
+    const SPOKEN_CLICK_GAZE_MS = 6000;
+    const SPOKEN_CLICK_RADIUS_PX = 400;
     const SPEECH_MAX_MS = 4000;
     const FLICK_FIND_RADIUS_PX = 260;
     const RAW_WINDOW = 5;
@@ -32,6 +34,7 @@
     const RECENTER_COLLECT_MS = 1100;
     const RECENTER_MIN_SAMPLES = 5;
     const RECENTER_RETRY_MS = 1500;
+    const FACE_GONE_MS = 2000;
     const RECENTER_MAX_PX = 500;
     const NUMBERS_NEAR_GAZE = 9;
     const NUMBERS_MAX = 40;
@@ -56,6 +59,7 @@
     let holdAt = null; // where the gaze was when a flick chose the current item
     let gazeMutedUntil = 0;
     let needsRecenter = false;
+    let faceGoneAt = null;
     let recenterRetryAt = 0;
     let headAssist = null;
     let assistFor = null;
@@ -275,6 +279,15 @@
         runCommand({ name: 'down' });
       }
       const model = activeModel();
+      // Someone who left the camera's view comes back sitting differently.
+      if (!msg.face) faceGoneAt ??= now;
+      else if (faceGoneAt !== null) {
+        if (now - faceGoneAt >= FACE_GONE_MS && model && !paused && !agentRunning) {
+          needsRecenter = true;
+          chrome.storage.local.set({ needsRecenter: true });
+        }
+        faceGoneAt = null;
+      }
       // Otherwise an uncalibrated tab just looks broken.
       if (msg.face && !model && !calibrateHintShown) {
         calibrateHintShown = true;
@@ -373,6 +386,14 @@
       const label = el.getAttribute('aria-label') || el.innerText?.trim() || (isButtonInput && el.value)
         || el.querySelector?.('img[alt]')?.alt || el.getAttribute('title') || el.getAttribute('placeholder') || '';
       return label.replace(/\s+/g, ' ');
+    }
+
+    // "클릭" with nothing highlighted still means the closest thing being looked at. Gaze
+    // pauses during speech, so its last reading counts for a while after it stops updating.
+    function nearestToGaze() {
+      if (!gaze || performance.now() - gazeAt > SPOKEN_CLICK_GAZE_MS) return null;
+      const i = pickTarget(targets.map((c) => c.rect), gaze, SPOKEN_CLICK_RADIUS_PX);
+      return i >= 0 ? targets[i].el : null;
     }
 
     function saveBias(next) {
@@ -630,9 +651,12 @@
       else if (!msg.running && !msg.blocked) ui.toast.style.display = 'none';
     }
 
-    function startAgent(goal) {
+    // Unprompted speech must stay out of the way: no replacing a running task, and no
+    // nagging about settings for what may just have been someone talking nearby.
+    function startAgent(goal, explicit = true) {
+      if (!explicit && (agentRunning || !settings.agent)) return;
       if (!settings.agent) { toast(t.agentOff); return; }
-      chrome.runtime.sendMessage({ type: 'agent-start', goal }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'agent-start', goal, quiet: !explicit }).catch(() => {});
     }
 
     function onAiEvent(msg) {
@@ -776,7 +800,9 @@
         case 'click': {
           // A highlight left over from an unusable model says nothing about the gaze.
           if (!activeModel()) { toast(t.calibrateFirst); break; }
-          const el = currentTarget();
+          // Until the gaze is realigned, it can't say what "this" is.
+          if (needsRecenter) { toast(t.recenterRequired); break; }
+          const el = currentTarget() ?? nearestToGaze();
           if (el) activate(el);
           else toast(activeModel() ? t.noTarget : t.calibrateFirst);
           break;
@@ -806,7 +832,8 @@
         case 'summarize': requestSummary(); break;
         case 'find': requestFind(cmd); break;
         case 'recenter': recenter(); break;
-        case 'agent': startAgent(cmd.goal); break;
+        case 'agent': startAgent(cmd.goal, cmd.wake !== false); break;
+        case 'wake': toast(settings.agent ? t.wakeListening : t.agentOff, 8000); break;
         case 'pause':
           paused = true;
           chrome.runtime.sendMessage({ type: 'agent-stop' }).catch(() => {});

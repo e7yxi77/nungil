@@ -2,268 +2,112 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>눈길 · 눈과 목소리로 쓰는 웹</title>
-  <meta name="description" content="마우스를 쓰기 어려운 사람을 위한 크롬 확장 프로그램. 웹캠과 마이크만으로 바라보고, 말하고, 눈을 감아 클릭해요.">
-  <style>
-    :root {
-      --bg: #fff; --alt: #f5f5f7; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0, 0, 0, .1); --accent: #0071e3; --accent-hover: #0077ed; --tint: rgba(0, 113, 227, .1); --card: #fff; --bar: rgba(255, 255, 255, .72);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg: #000; --alt: #161617; --fg: #f5f5f7; --muted: #a1a1a6; --line: rgba(255, 255, 255, .14); --accent: #0a84ff; --accent-hover: #2997ff; --tint: rgba(10, 132, 255, .18); --card: #1d1d1f; --bar: rgba(22, 22, 23, .72); }
-    }
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    body { margin: 0; background: var(--bg); color: var(--fg); font: 100%/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', system-ui, sans-serif; font-size: 18px; letter-spacing: -.01em; word-break: keep-all; -webkit-font-smoothing: antialiased; }
-    a { color: inherit; text-decoration: none; }
-    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
-    .skip { position: absolute; left: -999px; top: 8px; background: var(--accent); color: #fff; padding: 10px 16px; border-radius: 10px; font-weight: 600; z-index: 20; }
-    .skip:focus { left: 8px; }
-    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
-    .bar { position: sticky; top: 0; z-index: 10; background: var(--bar); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); box-shadow: inset 0 -.5px 0 var(--line); }
-    nav { display: flex; align-items: center; justify-content: space-between; height: 48px; }
-    .brand { font-weight: 600; font-size: 19px; letter-spacing: -.02em; }
-    nav ul { display: flex; gap: 24px; list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--muted); }
-    nav ul a:hover { color: var(--fg); }
-    .hero { padding-top: 96px; padding-bottom: 96px; text-align: center; }
-    h1 { font-size: clamp(48px, 9.5vw, 96px); line-height: 1.05; letter-spacing: -.035em; margin: 0 0 22px; font-weight: 700; }
-    h1 em { font-style: normal; color: var(--accent); }
-    .lede { font-size: clamp(20px, 2.6vw, 26px); line-height: 1.35; letter-spacing: -.02em; max-width: 680px; margin: 0 auto 34px; color: var(--muted); }
-    .btn { display: inline-block; padding: 13px 26px; border-radius: 980px; font-size: 17px; font-weight: 500; background: var(--accent); color: #fff; transition: transform .1s ease-out, background .2s; }
-    .btn:hover { background: var(--accent-hover); }
-    .btn:active { transform: scale(.97); }
-    .btn.ghost { background: var(--tint); color: var(--accent); margin-left: 10px; }
-    section { padding: 96px 0; }
-    section:nth-of-type(odd) { background: var(--alt); }
-    h2 { font-size: clamp(34px, 5.4vw, 56px); line-height: 1.08; letter-spacing: -.03em; margin: 0 0 14px; font-weight: 700; text-align: center; }
-    .sub { color: var(--muted); font-size: clamp(19px, 2vw, 22px); line-height: 1.4; letter-spacing: -.015em; margin: 0 auto 48px; max-width: 680px; text-align: center; }
-
-    #stage { position: relative; background: #000; color: #f5f5f7; border-radius: 28px; padding: 36px 28px; overflow: hidden; touch-action: manipulation; box-shadow: 0 24px 60px rgba(0, 0, 0, .18); }
-    .fake-bar { font-size: 13px; color: #a1a1a6; margin: 0 0 20px; }
-    .fake-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
-    .fake-grid button { font: inherit; font-weight: 600; padding: 34px 12px; border-radius: 18px; border: 0; background: rgba(255, 255, 255, .1); color: inherit; cursor: pointer; transition: background .2s, transform .1s ease-out; }
-    .fake-grid button:active { transform: scale(.97); }
-    .fake-grid button.pressed { background: #0a84ff; color: #fff; }
-    #gazeBox { position: absolute; border-radius: 22px; box-shadow: 0 0 0 3px #0a84ff, 0 0 0 7px rgba(10, 132, 255, .3); pointer-events: none; display: none; }
-    #gazeRing { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; pointer-events: none; display: none; -webkit-mask: radial-gradient(farthest-side, transparent 70%, #000 72%); mask: radial-gradient(farthest-side, transparent 70%, #000 72%); }
-    #demoStatus { min-height: 1.55em; margin: 20px 0 0; font-weight: 500; color: #64aaff; }
-
-    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 20px; }
-    .controls > div { background: var(--card); border-radius: 22px; padding: 26px 24px 16px; box-shadow: 0 0 0 .5px var(--line); }
-    .controls h3 { font-size: 24px; font-weight: 700; letter-spacing: -.025em; margin: 0 0 12px; }
-    .controls ul { list-style: none; padding: 0; margin: 0; }
-    .controls li { padding: 11px 0; border-top: .5px solid var(--line); font-size: 15px; line-height: 1.35; }
-    .controls b { display: block; font-weight: 600; }
-    .controls span { color: var(--muted); font-size: 14px; }
-
-    ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 0 auto 36px; max-width: 640px; }
-    ol.steps li { counter-increment: step; position: relative; padding: 2px 0 26px 56px; }
-    ol.steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 36px; height: 36px; line-height: 36px; text-align: center; border-radius: 50%; background: var(--tint); color: var(--accent); font-weight: 600; font-size: 16px; }
-    code { font: .9em ui-monospace, 'SF Mono', Menlo, monospace; background: var(--tint); padding: 2px 7px; border-radius: 6px; }
-    .center { text-align: center; }
-
-    .honest { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 20px; }
-    .honest > div { background: var(--card); border-radius: 22px; padding: 28px 26px; box-shadow: 0 0 0 .5px var(--line); }
-    .honest h3 { margin: 0 0 8px; font-size: 21px; font-weight: 700; letter-spacing: -.02em; }
-    .honest p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.5; }
-    footer { padding: 28px 0 40px; background: var(--alt); color: var(--muted); font-size: 12px; box-shadow: inset 0 .5px 0 var(--line); }
-    @media (max-width: 560px) {
-      nav ul { display: none; }
-      .hero { padding-top: 64px; padding-bottom: 64px; }
-      section { padding: 64px 0; }
-      .btn.ghost { margin: 10px 0 0; }
-    }
-    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
-    @media (prefers-reduced-transparency: reduce) { .bar { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>눈길 · 손을 쓰지 않는 웹</title>
+  <meta name="description" content="손을 사용하지 않아도, 웹을 자유롭게. 눈길은 시선과 머리 움직임, 목소리, AI로 브라우저를 제어하는 크롬 확장 프로그램이에요.">
+  <meta name="theme-color" content="#04070f">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="landing.css">
+  <script type="module" src="film.js"></script>
 </head>
 <body>
   <a class="skip" href="#main">본문으로 건너뛰기</a>
-  <header class="bar"><div class="wrap">
+
+  <header class="bar" id="bar">
     <nav aria-label="주요 메뉴">
       <a class="brand" href="#main">눈길</a>
-      <ul>
-        <li><a href="#try">체험</a></li>
-        <li><a href="#controls">조작법</a></li>
-        <li><a href="#install">설치</a></li>
-        <li><a href="#honest">개인정보</a></li>
-      </ul>
+      <a class="bar-cta" href="nungil-extension.zip" download>시작하기</a>
     </nav>
-  </div></header>
+  </header>
 
   <main id="main">
-    <div class="wrap hero">
-      <h1>바라보고,<br>말하면 <em>클릭.</em></h1>
-      <p class="lede">눈길은 마우스를 쓰기 어려운 사람을 위한 크롬 확장 프로그램이에요. 특별한 장비 없이 웹캠과 마이크만으로 웹을 조작해요. 바라보는 항목이 표시되고, 계속 바라보면 눌려요.</p>
-      <a class="btn" href="nungil-extension.zip" download>확장 프로그램 받기</a>
-      <a class="btn ghost" href="#try">먼저 체험하기</a>
+    <div class="film" id="film">
+      <div class="stage" id="stage" aria-hidden="true">
+        <canvas id="gl"></canvas>
+        <div class="stage-shade" id="shade"></div>
+      </div>
+
+      <section class="beat beat-hero" data-beat="0" aria-labelledby="s1">
+        <div class="pin">
+          <div class="copy">
+            <p class="eyebrow">눈길</p>
+            <h1 id="s1">웹을 사용하는<br>새로운 방식.</h1>
+            <p class="lede">손을 사용하지 않고도, 시선과 목소리만으로 브라우저를 자유롭게 제어하세요.</p>
+          </div>
+          <p class="hint" aria-hidden="true"><span></span>스크롤</p>
+        </div>
+      </section>
+
+      <section class="beat beat-side" id="how" data-beat="1" aria-labelledby="s2">
+        <div class="pin">
+          <div class="copy">
+            <p class="eyebrow">시선과 머리</p>
+            <h2 id="s2">시선만으로 선택하고,<br>움직임만으로 조작하세요.</h2>
+            <p class="body">움직이는 포인터는 없어요. 웹캠이 시선을 따라가고, 바라보는 항목에 파란 테두리가 표시돼요.</p>
+            <ol class="trail" id="trail">
+              <li>바라보면 항목이 표시돼요</li>
+              <li>고개를 까딱하면 옆 항목으로 넘어가요</li>
+              <li>1.5초 더 바라보면 눌려요</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="beat beat-side" data-beat="2" aria-labelledby="s3">
+        <div class="pin">
+          <div class="copy">
+            <p class="eyebrow">목소리</p>
+            <h2 id="s3">말하는 것만으로<br>브라우저를 제어하세요.</h2>
+            <p class="body">누르고 싶은 것을 말하면, AI가 화면에서 항목을 찾아 눌러요.</p>
+            <ul class="said" id="said">
+              <li>"검색 버튼 클릭해 줘."</li>
+              <li>"다음 페이지로 이동해 줘."</li>
+              <li>"새 탭 열어 줘."</li>
+            </ul>
+          </div>
+          <p class="transcript" id="transcript" aria-hidden="true"><i></i><span>"검색 버튼 클릭해 줘."</span></p>
+        </div>
+      </section>
+
+      <section class="beat beat-side" data-beat="3" aria-labelledby="s4">
+        <div class="pin">
+          <div class="copy">
+            <p class="eyebrow">AI 스마트 자동화 · Codex</p>
+            <h2 id="s4">원하는 것을 말하세요.<br>AI가 실행합니다.</h2>
+            <p class="body">"Google에서 해커톤을 검색해 줘." 한마디면 AI가 단계를 나누고, 브라우저에서 차례로 수행해요.</p>
+            <ol class="sr-only">
+              <li>Google 검색 페이지 접속</li>
+              <li>검색창 인식</li>
+              <li>'해커톤' 입력</li>
+              <li>검색 실행</li>
+              <li>검색 결과 표시</li>
+            </ol>
+            <ul class="said said-more">
+              <li>"유튜브에서 인공지능 관련 영상을 찾아줘."</li>
+              <li>"이 페이지의 핵심 내용을 요약해 줘."</li>
+              <li>"현재 페이지에서 다음 단계로 진행해 줘."</li>
+            </ul>
+            <p class="note">전송, 결제, 삭제는 AI가 혼자 누르지 않아요. 먼저 멈추고 물어봐요.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="beat beat-final" data-beat="4" aria-labelledby="s5">
+        <div class="pin">
+          <div class="copy">
+            <h2 id="s5">기술은 누구에게나<br>자유로워야 합니다.</h2>
+            <p class="lede">신체적 제약을 넘어, 누구나 자유롭게 웹을 사용할 수 있도록.</p>
+            <div class="cta">
+              <a class="btn" href="nungil-extension.zip" download>Chrome Extension 시작하기</a>
+              <a class="btn ghost" href="#how">프로젝트 자세히 알아보기</a>
+            </div>
+            <p class="note">데스크톱 크롬용 · 약 12MB · 웹캠과 마이크만 있으면 돼요</p>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <section id="try">
-      <div class="wrap">
-        <h2>시선이 머무는 곳을 찾아요</h2>
-        <p class="sub">아래 상자에서 마우스를 시선이라고 생각하고 움직여 보세요. 가장 가까운 버튼에 달라붙고, 0.5초 뒤 카운트다운이 시작돼 1.5초가 지나면 눌려요. 실제 확장 프로그램에서는 카메라가 시선을 따라가요.</p>
-        <div id="stage">
-          <p class="fake-bar" aria-hidden="true">어느 웹사이트에서나</p>
-          <div class="fake-grid">
-            <button type="button">뉴스 읽기</button>
-            <button type="button">메일 열기</button>
-            <button type="button">동영상 보기</button>
-            <button type="button">지도 찾기</button>
-          </div>
-          <p id="demoStatus" role="status" aria-live="polite"></p>
-          <div id="gazeBox"></div>
-          <div id="gazeRing"></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="controls">
-      <div class="wrap">
-        <h2>몸 상태에 맞는 방법을 골라요</h2>
-        <p class="sub">말하기 어려우면 눈과 고개로, 눈이 피곤하면 목소리로. 필요한 방법만 켜서 쓸 수 있어요.</p>
-        <div class="controls">
-          <div>
-            <h3>시선과 고개</h3>
-            <ul>
-              <li><b>바라보기</b><span>가장 가까운 항목을 표시</span></li>
-              <li><b>2초 바라보기</b><span>클릭 (응시 시간 조절)</span></li>
-              <li><b>머리 보조</b><span>머리 방향으로 시선 정확도 높이기</span></li>
-              <li><b>고개 까딱</b><span>까딱한 방향의 옆 항목으로 이동</span></li>
-              <li><b>입 벌리기</b><span>아래로 스크롤</span></li>
-            </ul>
-          </div>
-          <div>
-            <h3>목소리</h3>
-            <ul>
-              <li><b>"클릭"</b><span>바라보는 항목 누르기</span></li>
-              <li><b>"로그인 버튼 눌러줘"</b><span>말로 찾아 누르기 (AI)</span></li>
-              <li><b>"지메일 들어가서 메일 작성해줘"</b><span>AI가 끝까지 수행</span></li>
-              <li><b>"눈길 켜줘", "눈길 꺼줘"</b><span>말로 켜고 끄기</span></li>
-              <li><b>"번호" → "3번"</b><span>작은 링크도 번호로</span></li>
-              <li><b>"입력 안녕하세요"</b><span>글자 입력</span></li>
-              <li><b>팝 소리 / 허밍</b><span>말 대신 소리로 조작</span></li>
-            </ul>
-          </div>
-          <div>
-            <h3>읽기</h3>
-            <ul>
-              <li><b>"읽어줘"</b><span>본문을 소리와 강조로</span></li>
-              <li><b>"단순 보기"</b><span>큰 글자와 쉬운 말로 (AI)</span></li>
-              <li><b>"요약해줘"</b><span>짧게 요약해 읽기 (AI)</span></li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="install">
-      <div class="wrap">
-        <h2>2분이면 시작해요</h2>
-        <p class="sub">아직 크롬 웹 스토어에 올리기 전이라 직접 설치해요. 데스크톱 크롬에서 쓸 수 있어요.</p>
-        <ol class="steps">
-          <li>파일을 받아 압축을 풀어요.</li>
-          <li>주소창에 <code>chrome://extensions</code>를 입력하고 <b>개발자 모드</b>를 켜요.</li>
-          <li><b>압축해제된 확장 프로그램을 로드합니다</b>를 눌러 압축을 푼 폴더를 골라요.</li>
-          <li>안내 화면이 바로 열려요. 1분 동안 점을 바라보면 시선 교정이 끝나고, 사용법까지 알려 줘요.</li>
-        </ol>
-        <p class="center"><a class="btn" href="nungil-extension.zip" download>확장 프로그램 받기</a></p>
-      </div>
-    </section>
-
-    <section id="honest">
-      <div class="wrap">
-        <h2>무엇이 어디로 가는지 알려드려요</h2>
-        <p class="sub">접근성 도구는 하루 종일 켜 두는 도구예요. 그래서 데이터가 어디로 가는지와 아직 부족한 점을 먼저 말씀드려요.</p>
-        <div class="honest">
-          <div><h3>카메라는 기기 안에서</h3><p>얼굴과 시선은 내 컴퓨터에서만 처리해요. 영상을 저장하거나 보내지 않아요. 크롬을 나가면 카메라와 마이크가 꺼지고, 돌아오면 다시 켜져요.</p></div>
-          <div><h3>목소리는 크롬으로</h3><p>음성 명령은 크롬의 음성 인식을 써서 음성이 Google로 전송될 수 있어요. 소리 조작 모드는 기기 안에서만 처리해요.</p></div>
-          <div><h3>AI는 로그인해야 동작해요</h3><p>ChatGPT에 직접 로그인한 뒤 AI 기능을 쓸 때만 페이지 본문이나 화면의 항목 이름, 말한 내용을 내 계정으로 보내요. 입력 칸에 쓴 내용은 보내지 않아요. 전송·결제·삭제는 AI가 혼자 누르지 않고 먼저 물어봐요.</p></div>
-          <div><h3>아직 초기 버전이에요</h3><p>웹캠 시선 추적은 작은 항목을 정확히 고르기 어려워서 번호 선택을 함께 제공해요. 조명에 영향을 받고, 일부 사이트에서는 클릭이 동작하지 않을 수 있어요.</p></div>
-        </div>
-      </div>
-    </section>
   </main>
-
-  <footer>
-    <div class="wrap">눈길 · The Dreamers 해커톤 프로젝트</div>
-  </footer>
-
-  <script>
-    (() => {
-      const stage = document.getElementById('stage');
-      const box = document.getElementById('gazeBox');
-      const ring = document.getElementById('gazeRing');
-      const status = document.getElementById('demoStatus');
-      const buttons = [...stage.querySelectorAll('button')];
-      const SNAP_RADIUS = 140;
-      const DWELL_MS = 1500;
-      const START_DELAY_MS = 500;
-      const COOLDOWN_MS = 1200;
-      let target = null, since = 0, blockedUntil = 0, frame = 0;
-
-      function press(button) {
-        buttons.forEach((b) => b.classList.remove('pressed'));
-        button.classList.add('pressed');
-        status.textContent = `"${button.textContent}"을(를) 눌렀어요`;
-      }
-      buttons.forEach((b) => b.addEventListener('click', () => press(b)));
-
-      function hide() {
-        target = null;
-        [box, ring].forEach((el) => { el.style.display = 'none'; });
-        cancelAnimationFrame(frame);
-      }
-
-      function nearest(x, y) {
-        let best = null, bestDist = SNAP_RADIUS;
-        for (const b of buttons) {
-          const r = b.getBoundingClientRect();
-          const d = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
-          if (d <= bestDist) { best = b; bestDist = d; }
-        }
-        return best;
-      }
-
-      function tick() {
-        const now = performance.now();
-        if (!target || now < blockedUntil) { ring.style.display = 'none'; }
-        else {
-          const progress = (now - Math.max(since, blockedUntil) - START_DELAY_MS) / DWELL_MS;
-          if (progress < 0) {
-            ring.style.display = 'none';
-          } else if (progress >= 1) {
-            press(target);
-            blockedUntil = now + COOLDOWN_MS;
-            ring.style.display = 'none';
-          } else {
-            const s = stage.getBoundingClientRect(), r = target.getBoundingClientRect();
-            const deg = Math.round(progress * 360);
-            ring.style.cssText = `display:block;left:${r.left - s.left + r.width / 2}px;top:${r.top - s.top + r.height / 2}px;background:conic-gradient(#0a84ff ${deg}deg, rgba(255,255,255,.25) ${deg}deg)`;
-          }
-        }
-        frame = requestAnimationFrame(tick);
-      }
-
-      stage.addEventListener('pointermove', (e) => {
-        if (e.pointerType === 'touch') return; // on touch, tapping the buttons is the demo
-        const s = stage.getBoundingClientRect();
-        const next = nearest(e.clientX, e.clientY);
-        if (next !== target) {
-          target = next;
-          since = performance.now();
-          if (target) {
-            const r = target.getBoundingClientRect();
-            box.style.cssText = `display:block;left:${r.left - s.left - 5}px;top:${r.top - s.top - 5}px;width:${r.width + 10}px;height:${r.height + 10}px`;
-          } else {
-            box.style.display = 'none';
-          }
-        }
-        cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(tick);
-      });
-      stage.addEventListener('pointerleave', hide);
-    })();
-  </script>
 </body>
 </html>

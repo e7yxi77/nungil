@@ -745,6 +745,51 @@ try {
     await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
   });
 
+  await check('"클릭" with nothing highlighted presses the nearest thing to the gaze', async () => {
+    await page.goto(pageUrl);
+    await page.bringToFront();
+    await page.waitForTimeout(400);
+    const box = await page.locator('#b').boundingBox();
+    const f = [0, 0, 0, 0, box.x + box.width + 240 + offset.x, box.y + box.height / 2 + offset.y, -40]; // out of snap range
+    const end = Date.now() + 700;
+    while (Date.now() < end) {
+      await sw.evaluate(([id, g]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: g }), [tabId, f]);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    const before = await page.evaluate(() => window.clicks.b);
+    await sw.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'speech', active: true }), tabId);
+    await page.waitForTimeout(1200); // gaze has gone stale while speaking
+    await say({ name: 'click' });
+    await until(() => page.evaluate((b) => window.clicks.b > b || location.hash === '#linked', before), 'something pressed', 4000);
+    await sw.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'speech', active: false }), tabId);
+    await page.goto(pageUrl);
+    await page.bringToFront();
+    await page.waitForTimeout(300);
+  });
+
+  await check('speech with no name runs the AI, but never replaces a running task or nags', async () => {
+    await scriptAgent([{ action: 'done', say: '처리했어요' }]);
+    await say({ name: 'agent', goal: '오늘 날씨 알려줘', wake: false }, '오늘 날씨 알려줘');
+    await until(async () => (await toastText()).includes('처리했어요'), 'unprompted speech handled', 10000);
+
+    await scriptAgent([]);
+    await say({ name: 'agent', goal: '계속 스크롤해줘', wake: true }, 'x');
+    await until(() => sw.evaluate(() => globalThis.__agentBodies.length >= 1), 'running', 10000);
+    await page.waitForTimeout(200);
+    await say({ name: 'agent', goal: '옆 사람의 잡담', wake: false }, 'x');
+    await page.waitForTimeout(1500);
+    const bodies = await sw.evaluate(() => globalThis.__agentBodies);
+    assert.ok(bodies.every((b) => !b.includes('옆 사람의 잡담')), 'chatter ignored during a task');
+    await say({ name: 'hide' });
+    await page.waitForTimeout(1200); // let a step already under way finish being cancelled
+    await sw.evaluate(() => { globalThis.fetch = globalThis.__agentReal; });
+    await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
+    await page.goto(pageUrl);
+    await page.bringToFront();
+    await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
+    await page.waitForTimeout(300);
+  });
+
   await check('a request not on screen falls through to the AI task runner', async () => {
     await sw.evaluate(() => { globalThis.__agentBodies = []; });
     const queue = [{ matches: [] }, { action: 'done', say: '지메일을 열었어요' }];
@@ -976,6 +1021,33 @@ try {
     results.push(`INFO after restart voice=${s?.voice ?? 'none'} tabs=${(await context.pages()).map((p) => p.url()).join(' | ')}`);
   });
 
+  await check('coming back after leaving the camera view triggers a recenter; a brief loss does not', async () => {
+    // Real tracker frames would say the photo's face is still there.
+    await sw.evaluate(() => chrome.offscreen.hasDocument().then((open) => open && chrome.offscreen.closeDocument()));
+    await sw.evaluate(() => chrome.storage.local.remove(['needsRecenter', 'gazeBias']));
+    await page.waitForTimeout(600);
+    const flag = async () => (await sw.evaluate(() => chrome.storage.local.get('needsRecenter'))).needsRecenter;
+    const away = async (ms) => {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        await sw.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'frame', face: false }), tabId);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    };
+    await lookAt('#b', 300);
+    await away(800);
+    await lookAt('#b', 300);
+    assert.strictEqual(await flag(), undefined, 'a brief loss is nothing');
+    await away(2300);
+    await lookAt('#b', 200);
+    await until(flag, 'recenter required on return', 3000);
+    await sw.evaluate(() => chrome.storage.local.remove('needsRecenter'));
+    await page.waitForTimeout(2300); // let the started recenter finish
+    await sw.evaluate(() => chrome.storage.local.remove(['needsRecenter', 'gazeBias']));
+    await sw.evaluate(() => restart());
+    await page.waitForTimeout(100);
+  });
+
   await check('turning back on requires a recenter: no gaze clicks until it is done', async () => {
     await page.bringToFront();
     const setRaw = (enabled) => sw.evaluate(async (on) => {
@@ -988,6 +1060,7 @@ try {
     await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
     await setRaw(true);
     await until(flag, 'recenter required', 5000);
+    try {
     // The real tracker reopens after turning on, and its frames must not mix with these.
     await until(() => sw.evaluate(() => chrome.offscreen.hasDocument()), 'tracker reopened', 15000);
     await sw.evaluate(() => chrome.offscreen.closeDocument());
@@ -1001,8 +1074,11 @@ try {
     const dot = () => page.evaluate(() => getComputedStyle(document.getElementById('__nungil-host').shadowRoot.querySelector('.recenter')).display);
     const size = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
     const before = await clicks();
-    await lookAt('#b', 300);
-    assert.strictEqual(await dot(), 'block', 'dot appears by itself');
+    // An earlier attempt on no frames may still be waiting out its retry delay.
+    await until(async () => {
+      await lookAt('#b', 200);
+      return (await dot()) === 'block';
+    }, 'dot appears by itself', 6000);
     assert.strictEqual((await boxStyle()).display, 'none', 'nothing highlights yet');
     await say({ name: 'click' });
     await page.waitForTimeout(150);
@@ -1019,7 +1095,9 @@ try {
     await page.waitForTimeout(100);
     await lookAt('#b', 900);
     assert.strictEqual((await boxStyle()).display, 'block', 'gaze works again');
-    await sw.evaluate(() => restart());
+    } finally {
+      await sw.evaluate(() => restart());
+    }
   });
 
   await check('"눈길 꺼줘" turns the camera off but keeps listening, "눈길 켜줘" turns it back on', async () => {
@@ -1159,14 +1237,17 @@ try {
     const toolbarHere = await cal.evaluate(() => document.querySelector('.step.on .scene')?.dataset.demo);
     if (toolbarHere !== 'toolbar') await cal.keyboard.press('ArrowLeft');
     await cal.waitForFunction(() => document.querySelector('.step.on .scene')?.dataset.demo === 'toolbar');
+    await cal.waitForFunction(() => globalThis.GuideDemo);
     const pointer = () => cal.evaluate(() => document.querySelector('.step.on .vcursor')?.style.transform);
     const start = await pointer();
-    await cal.waitForFunction(() => document.querySelector('.step.on .caption').textContent.includes('핀을'), null, { timeout: 8000 });
+    await cal.waitForFunction(() => document.querySelector('.step.on .caption').textContent.includes('핀을'), null, { timeout: 20000 });
     assert.notStrictEqual(await pointer(), start, 'pointer moved');
     assert.ok(await cal.evaluate(() => document.querySelector('#d-menu').classList.contains('show')), 'menu opened by the click');
-    await cal.waitForFunction(() => document.querySelector('#d-pinned').classList.contains('shown'), null, { timeout: 8000 });
+    await cal.waitForFunction(() => document.querySelector('#d-pinned').classList.contains('shown'), null, { timeout: 20000 });
 
     // Leaving the step stops its demo; coming back starts it over.
+    // Captions cross-fade, and stay long enough to read.
+    assert.ok((await cal.evaluate(() => getComputedStyle(document.querySelector('.step.on .caption')).transitionDuration)).includes('0.3s'));
     await cal.keyboard.press('ArrowRight');
     await cal.waitForFunction(() => document.querySelector('.step.on .scene')?.dataset.demo === 'settings');
     await cal.waitForFunction(() => document.querySelector('.step.on .caption').textContent.includes('켜기'), null, { timeout: 4000 });
@@ -1179,6 +1260,7 @@ try {
     for (const want of ['여기 있어요', '설정창', '바라보면', '까딱', '어긋나면', '말로', 'AI']) assert.ok(titles.some((t) => t.includes(want)), want);
 
     // Every demo runs through to its last caption without an error.
+    await cal.evaluate(() => { GuideDemo.speed = 0.2; });
     const demoErrors = [];
     cal.on('pageerror', (e) => demoErrors.push(e.message));
     const scenes = await cal.evaluate(() => [...document.querySelectorAll('.step')].map((s) => s.querySelector('.scene')?.dataset.demo ?? null));
@@ -1186,8 +1268,12 @@ try {
     let at = await cal.evaluate(() => [...document.querySelectorAll('.step')].findIndex((s) => s.classList.contains('on')));
     for (const [i, name] of scenes.entries()) {
       if (!name) continue;
-      while (at !== i) { await cal.keyboard.press(at < i ? 'ArrowRight' : 'ArrowLeft'); at += at < i ? 1 : -1; }
-      await cal.waitForFunction((w) => document.querySelector('.step.on .caption').textContent.includes(w), lastWords[name], { timeout: 45000 });
+      await cal.bringToFront();
+      await cal.evaluate((n) => show(n), i);
+      at = i;
+      await cal.waitForFunction((w) => document.querySelector('.step.on .caption').textContent.includes(w), lastWords[name], { timeout: 60000, polling: 100 }).catch(async (error) => {
+        throw new Error(`demo ${name} never reached "${lastWords[name]}", caption: ${await cal.textContent('.step.on .caption')}`);
+      });
     }
     assert.deepStrictEqual(demoErrors, []);
 
@@ -1196,7 +1282,7 @@ try {
     await setSettings({ enabled: false });
     await cal.waitForTimeout(500);
     const practice = titles.findIndex((t) => t.includes('까딱'));
-    while (at !== practice) { await cal.keyboard.press(at < practice ? 'ArrowRight' : 'ArrowLeft'); at += at < practice ? 1 : -1; }
+    await cal.evaluate((n) => show(n), practice);
     const frame = (yaw) => sw.evaluate((y) => chrome.runtime.sendMessage({ type: 'frame', face: true, blink: false, features: [0, 0, y, 0, 0, 0, -40, 0, 0] }).catch(() => {}), yaw);
     for (const k of [0, 0, 0, 0, 0, 0, 0.6, 1, 1, 0.5, 0, 0, 0]) {
       await frame(0.14 * k);

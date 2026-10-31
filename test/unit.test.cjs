@@ -201,47 +201,43 @@ test('response stream surfaces OpenAI failures and HTTP errors', async () => {
   });
 });
 
-test('free-form requests need an action verb, and say whether to press', () => {
-  assert.deepStrictEqual(parseCommand('로그인 버튼 눌러줘'), { name: 'find', query: '로그인 버튼', text: '로그인 버튼 눌러줘', click: true });
-  assert.deepStrictEqual(parseCommand('날씨 링크 열어 주세요.'), { name: 'find', query: '날씨 링크', text: '날씨 링크 열어 주세요', click: true });
-  assert.deepStrictEqual(parseCommand('뉴스 찾아줘'), { name: 'find', query: '뉴스', text: '뉴스 찾아줘', click: false });
-  assert.deepStrictEqual(parseCommand('click the login button'), { name: 'find', query: 'the login button', text: 'click the login button', click: true });
-  assert.deepStrictEqual(parseCommand('find news'), { name: 'find', query: 'news', text: 'find news', click: false });
+test('"교정" runs the two-second recenter', () => {
+  for (const say of ['교정', '교정해줘', '교정 해 주세요', '시선 교정', '시선 맞춤', '재교정']) assert.strictEqual(parseCommand(say)?.name, 'recenter', say);
 });
 
-test('free-form parsing leaves exact commands, numbers and conversation alone', () => {
+test('the wake phrase still works, and marks the request as explicit', () => {
+  assert.deepStrictEqual(parseCommand('헤이 눈길 지메일 들어가서 메일 작성해줘'), { name: 'agent', goal: '지메일 들어가서 메일 작성해줘', wake: true });
+  assert.deepStrictEqual(parseCommand('Hey 눈길, 오늘 날씨 알려줘.'), { name: 'agent', goal: '오늘 날씨 알려줘', wake: true });
+  assert.deepStrictEqual(parseCommand('헤이 눈 길 로그인 버튼 눌러줘'), { name: 'find', query: '로그인 버튼', text: '로그인 버튼 눌러줘', click: true });
+  assert.strictEqual(parseCommand('헤이 눈길 요약해줘').name, 'summarize');
+  assert.deepStrictEqual(parseCommand('헤이 눈길'), { name: 'wake' });
+});
+
+test('anything that is not a command goes to the AI without the wake phrase', () => {
+  assert.deepStrictEqual(parseCommand('지메일 들어가서 메일 작성해줘'), { name: 'agent', goal: '지메일 들어가서 메일 작성해줘', wake: false });
+  assert.deepStrictEqual(parseCommand('오늘 날씨 알려줘.'), { name: 'agent', goal: '오늘 날씨 알려줘', wake: false });
+  assert.deepStrictEqual(parseCommand('로그인 버튼 눌러줘'), { name: 'find', query: '로그인 버튼', text: '로그인 버튼 눌러줘', click: true });
+  assert.deepStrictEqual(parseCommand('뉴스 찾아줘'), { name: 'find', query: '뉴스', text: '뉴스 찾아줘', click: false });
+  for (const s of ['네', '음', '그래', '아니']) assert.strictEqual(parseCommand(s), null, `too short: ${s}`);
+});
+
+test('plain commands are never sent to the AI', () => {
   assert.strictEqual(parseCommand('이거 눌러줘').name, 'click');
   assert.deepStrictEqual(parseCommand('3번 눌러줘'), { name: 'number', n: 3 });
   assert.deepStrictEqual(parseCommand('click 5'), { name: 'number', n: 5 });
   assert.strictEqual(parseCommand('클릭해줘').name, 'click');
-  for (const s of ['오늘 점심 뭐 먹을까', '이거 클릭하면 어떻게 되는 거야', '그 버튼 눌렀어', 'i will click later on']) {
-    const parsed = parseCommand(s);
-    assert.ok(parsed === null || s.startsWith('i will') ? parsed === null : false, `${s} -> ${JSON.stringify(parsed)}`);
-  }
-});
-
-test('a spoken task goes to the agent, and short or casual speech does not', () => {
-  assert.deepStrictEqual(parseCommand('지메일 들어가서 메일 작성해줘'), { name: 'agent', goal: '지메일 들어가서 메일 작성해줘' });
-  assert.strictEqual(parseCommand('유튜브에서 고양이 영상 틀어 주세요.').name, 'agent');
-  assert.strictEqual(parseCommand('go to gmail and write an email').name, 'agent');
-  for (const s of ['물 좀 줘', '오늘 점심 뭐 먹을까', '그거 어떻게 했어', '아까 메일 작성했어']) assert.strictEqual(parseCommand(s), null, s);
   assert.strictEqual(parseCommand('아래로 스크롤해줘').name, 'down');
-  assert.strictEqual(parseCommand('요약해줘').name, 'summarize');
+  assert.strictEqual(parseCommand('눈길 꺼줘').name, 'powerOff');
 });
 
-test('agent replies are validated, so a bad one can never drive the browser', () => {
-  const { parseAgentAction: p } = globalThis.Codex;
-  assert.deepStrictEqual(p('{"action":"click","index":2,"say":"눌러요"}', 5), { action: 'click', index: 2, say: '눌러요' });
-  assert.deepStrictEqual(p('```json\n{"action":"navigate","url":"https://mail.google.com"}\n```', 0), { action: 'navigate', url: 'https://mail.google.com', say: '' });
-  assert.strictEqual(p('{"action":"navigate","url":"javascript:alert(1)"}', 5), null);
-  assert.strictEqual(p('{"action":"navigate","url":"chrome://settings"}', 5), null);
-  assert.strictEqual(p('{"action":"navigate","url":"file:///etc/passwd"}', 5), null);
-  assert.strictEqual(p('{"action":"click","index":9}', 5), null);
-  assert.strictEqual(p('{"action":"click","index":"1"}', 5), null);
-  assert.strictEqual(p('{"action":"type","index":1}', 5), null);
-  assert.strictEqual(p('{"action":"eval","code":"x"}', 5), null);
-  assert.strictEqual(p('no json here', 5), null);
-  assert.strictEqual(p('{"action":"done","say":"끝"}', 0).action, 'done');
+test('listener: a plain command in any alternative beats an AI reading of the first', () => {
+  const { createListener } = globalThis.Commands;
+  const listen = createListener();
+  assert.strictEqual(listen(['클릭 한다', '클릭'], 1000).command.name, 'click');
+  assert.strictEqual(listen(['오늘 날씨 알려줘', '오늘 날씨 알려 줘'], 2000).command.name, 'agent');
+  assert.strictEqual(listen(['오늘 뭐 먹지', '헤이 눈길'], 3000).command.name, 'wake', 'heard in any alternative');
+  assert.strictEqual(listen(['메일 써줘'], 4000).command.wake, true, 'after the name, the next words are explicit');
+  assert.strictEqual(listen(['메일 써줘'], 5000).command.wake, false, 'only the one request');
 });
 
 test('parseMatches keeps only real indexes from the model reply', () => {
@@ -532,11 +528,6 @@ test('parseCommand extracts dictation text and keeps its spacing', () => {
   assert.deepStrictEqual(parseCommand('type hello world'), { name: 'type', text: 'hello world' });
 });
 
-test('parseCommand ignores ordinary conversation', () => {
-  for (const s of ['오늘 점심 뭐 먹을까', '이거 클릭하면 어떻게 되는 거야', 'please go down the road']) {
-    assert.strictEqual(parseCommand(s), null, s);
-  }
-});
 
 test('a flick maps to the side the user actually moved toward', () => {
   const { flickDirection } = globalThis.GazeModel;
