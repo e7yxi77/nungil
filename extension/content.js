@@ -32,6 +32,7 @@
     const FIND_LABEL_CHARS = 80;
     const PRESS_AFTER_FIND_MS = 450;
     const NAMED_MAX_CHOICES = 9;
+    const SPOKEN_NAME_MAX_CHARS = 24;
     const RECENTER_SETTLE_MS = 900;
     const RECENTER_COLLECT_MS = 1100;
     const RECENTER_KEEP_SAMPLES = 12;
@@ -702,6 +703,18 @@
       return hits.map((c) => c.el);
     }
 
+    // Stricter than matchByName, since this can be any sentence heard near the mic: the
+    // whole thing has to be one button's name, or a good part of only one.
+    function matchSpokenName(spoken) {
+      const wanted = squash(spoken).replace(NOUN_ENDINGS, '');
+      if (wanted.length < 2 || wanted.length > SPOKEN_NAME_MAX_CHARS) return null;
+      const named = findPool().map((el) => ({ el, label: squash(labelOf(el)) })).filter((c) => c.label);
+      const exact = named.filter((c) => c.label === wanted);
+      if (exact.length) return exact[0].el;
+      const partial = named.filter((c) => c.label.includes(wanted) && wanted.length * 2 >= c.label.length);
+      return partial.length === 1 ? partial[0].el : null;
+    }
+
     // Goes to a button that may be off screen, and shows which one before pressing it.
     function goAndPress(el) {
       el.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -991,7 +1004,13 @@
         case 'find': requestFind(cmd); break;
         case 'recenter': recenter(); break;
         case 'quickCalibrate': quickCalibrate(); break;
-        case 'agent': startAgent(cmd.goal, cmd.wake !== false); break;
+        case 'agent': {
+          // Saying just what's on a button is the most direct request there is.
+          const named = matchSpokenName(cmd.goal);
+          if (named) pressFound([named], true);
+          else startAgent(cmd.goal, cmd.wake !== false);
+          break;
+        }
         case 'wake': toast(settings.agent ? t.wakeListening : t.agentOff, 8000); break;
         case 'pause':
           paused = true;

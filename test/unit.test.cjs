@@ -220,6 +220,13 @@ test('saying a button name with a press word finds it, in every usual form', () 
     assert.strictEqual(c.query, '뉴스', say);
     assert.strictEqual(c.click, true, say);
   }
+  for (const say of ['뉴스 눌러봐', '뉴스 눌러 주세요', '뉴스 눌러 줘요', '뉴스 클릭하세요', '뉴스 클릭해 봐', '뉴스 클릭 좀 해줘', '뉴스 누를래', '뉴스 선택할게', '뉴스 열어 봐', '뉴스 들어가 줘']) {
+    const c = parseCommand(say);
+    assert.strictEqual(c?.name, 'find', say);
+    assert.strictEqual(c.query, '뉴스', say);
+  }
+  assert.strictEqual(parseCommand('뉴스 찾아 줘').click, false);
+  assert.strictEqual(parseCommand('이거 클릭하면 어떻게 되는 거야')?.name, 'agent', 'a question stays a question');
   assert.strictEqual(parseCommand('클릭').name, 'click');
   assert.deepStrictEqual(parseCommand('5번 클릭'), { name: 'number', n: 5 });
   assert.strictEqual(parseCommand('빠른 교정').name, 'quickCalibrate');

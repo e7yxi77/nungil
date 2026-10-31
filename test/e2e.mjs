@@ -864,7 +864,22 @@ try {
     await page.bringToFront();
   });
 
+  await check('signed out, saying just a button name still presses it', async () => {
+    await page.goto(pageUrl);
+    await page.bringToFront();
+    await page.waitForTimeout(300);
+    await say({ name: 'agent', goal: '쇼핑', wake: false }, '쇼핑');
+    await until(() => page.evaluate(() => window.nav.n3 === 1), 'pressed', 4000);
+    await say({ name: 'agent', goal: '쇼핑 버튼', wake: false }, '쇼핑 버튼');
+    await until(() => page.evaluate(() => window.nav.n3 === 2), 'pressed with a noun', 4000);
+    const before = await page.evaluate(() => window.nav.n3);
+    await say({ name: 'agent', goal: '오늘 쇼핑 가서 뭐 살까', wake: false }, 'x');
+    await page.waitForTimeout(700);
+    assert.strictEqual(await page.evaluate(() => window.nav.n3), before, 'a sentence that mentions it is not a press');
+  });
+
   await check('signed out, speech meant for the AI says so instead of going silent', async () => {
+    await sw.evaluate(() => { signInNoticeAt = 0; });
     await page.evaluate(() => { document.getElementById('__nungil-host').shadowRoot.querySelector('.toast').textContent = ''; });
     await say({ name: 'agent', goal: '오늘 날씨 알려줘', wake: false }, '');
     await until(() => page.evaluate(() => document.getElementById('__nungil-host').shadowRoot.querySelector('.toast').textContent.includes('로그인')), 'sign-in notice', 4000);

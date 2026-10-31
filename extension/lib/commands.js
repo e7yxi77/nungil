@@ -49,7 +49,9 @@
   }
 
   // Requests ending in an action verb, which name something on screen.
-  const FIND_KO = /^(.+?)\s*(눌러\s*줘|눌러\s*주세요|눌러|누르기|클릭\s*해\s*줘|클릭\s*해\s*주세요|클릭\s*해|클릭|선택\s*해\s*줘|선택\s*해\s*주세요|선택\s*해|선택|열어\s*줘|열어\s*주세요|열어|들어가\s*줘|들어가|찾아\s*줘|찾아\s*주세요|찾아)$/;
+  // Any ending on a press word near the end of the sentence, because people say
+  // 눌러줘, 눌러봐, 눌러 주세요, 클릭하세요, 클릭 좀 해줘 and more, not a fixed list.
+  const FIND_KO = /^(.+?)\s*((?:눌러|누르|누를|클릭|선택|열어|들어가|찾아)[가-힣\s]{0,6})$/;
   const FIND_EN = /^(click|press|open|find)\s+(?:on\s+)?(.+)$/i;
   const DEMONSTRATIVES = new Set(['이거', '저거', '그거', '이것', '저것', '그것', '여기', 'this', 'that', 'it']);
 

@@ -115,6 +115,13 @@ async function reinject(tab) {
   });
 }
 
+// The last few sentences and what they became, kept on this computer only, because
+// "voice doesn't work" can't be traced from counts alone.
+function rememberSpeech(text, command) {
+  if (!text) return;
+  diag.recentSpeech = [...(diag.recentSpeech ?? []).slice(-5), { text: text.slice(0, 60), command }];
+}
+
 async function toActiveTab(message) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   diag.tabScheme = tab ? (tab.url ?? '').split(':')[0] : 'none';
@@ -436,6 +443,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       toActiveTab(msg);
       break;
     case 'command':
+      rememberSpeech(msg.transcript, msg.command?.name);
       if (msg.command?.name === 'powerOn' || msg.command?.name === 'powerOff') {
         setPower(msg.command.name === 'powerOn');
         break;
@@ -447,6 +455,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       toActiveTab(msg);
       break;
     case 'transcript':
+      rememberSpeech(msg.transcript, null);
       diag.heard = (diag.heard ?? 0) + 1;
       toActiveTab(msg);
       break;
