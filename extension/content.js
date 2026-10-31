@@ -5,15 +5,16 @@
   // A newly injected copy always takes over instead.
   window.__nungilDispose?.();
   (() => {
-    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, flickDirection, neighbourIn } = GazeModel;
+    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn } = GazeModel;
 
-    const SNAP_RADIUS = 140;
-    const SWITCH_MS = 350;
+    const SNAP_MIN_PX = 150;
+    const SNAP_MAX_PX = 300;
+    const SWITCH_MS = 220;
     const DWELL_START_DELAY_MS = 500; // looking around shouldn't start a countdown
-    const STICKY_PX = 50;
+    const STICKY_PX = 80;
     const HOLD_RELEASE_PX = 220;
-    const HEAD_SETTLE_MS = 400;
-    const SPEECH_MAX_MS = 6000;
+    const HEAD_SETTLE_MS = 250;
+    const SPEECH_MAX_MS = 4000;
     const FLICK_FIND_RADIUS_PX = 260;
     const RAW_WINDOW = 5;
     const MAX_TARGET_VIEWPORT_SHARE = 0.4;
@@ -27,11 +28,10 @@
     const AI_MAX_CHARS = 30000;
     const FIND_MAX_ITEMS = 150;
     const FIND_LABEL_CHARS = 80;
-    const CLICK_LEARN_RATE = 0.5;
-    const CLICK_BIAS_LIMIT = 250;
     const RECENTER_SETTLE_MS = 900;
     const RECENTER_COLLECT_MS = 1100;
     const RECENTER_MIN_SAMPLES = 5;
+    const RECENTER_RETRY_MS = 1500;
     const RECENTER_MAX_PX = 500;
     const NUMBERS_NEAR_GAZE = 9;
     const NUMBERS_MAX = 40;
@@ -55,6 +55,10 @@
     const headFlick = createHeadFlick();
     let holdAt = null; // where the gaze was when a flick chose the current item
     let gazeMutedUntil = 0;
+    let needsRecenter = false;
+    let recenterRetryAt = 0;
+    let headAssist = null;
+    let assistFor = null;
     let speaking = false;
     let speakingTimer = 0;
     let eyesClosedAt = null;
@@ -220,15 +224,16 @@
       }
       const next = neighbourIn(flickDirection(flick), from, rects);
       if (next < 0) return; // nothing that way: the highlight staying put says so
-      // Choosing this item says the gaze was off by this much.
-      learnDrift(gaze, list[next].el);
       setTarget(list[next].el, now);
       candidate = null;
       holdAt = { x: gaze.x, y: gaze.y };
     }
 
+    // As forgiving as this user's calibration needs: gaze is only ever this close.
+    const snapRadius = () => Math.max(SNAP_MIN_PX, Math.min(SNAP_MAX_PX, (activeModel()?.errorPx ?? 0) * 1.3));
+
     function updateTarget(point, now) {
-      const i = pickTarget(targets.map((c) => c.rect), point, SNAP_RADIUS);
+      const i = pickTarget(targets.map((c) => c.rect), point, snapRadius());
       const el = i >= 0 ? targets[i].el : null;
       if (el === target) { candidate = null; return; }
       // Noise alone must not move the highlight. It leaves only once the gaze has
@@ -256,7 +261,7 @@
       if (progress >= 1) {
         ui.ring.style.display = 'none';
         dwellBlockedUntil = now + DWELL_COOLDOWN_MS;
-        activate(target); // a dwell can be accidental, so it teaches nothing about drift
+        activate(target);
         return;
       }
       const r = target.getBoundingClientRect();
@@ -293,12 +298,18 @@
       // Head motion throws the eye signals off, so gaze input stops until it's over:
       // the highlight, the dwell and the smoothing all carry on from before it.
       const motion = headFlick(msg.features[2], msg.features[3], now);
+      if (assistFor !== model) {
+        assistFor = model;
+        headAssist = createHeadAssist(model);
+      }
+      const shift = headAssist(msg.features, now, motion.moving || Boolean(motion.flick));
       if (motion.moving || motion.flick) gazeMutedUntil = now + HEAD_SETTLE_MS;
       // Talking moves the face and the eyes. The highlight stays, so "클릭" presses what
       // was being looked at. While the AI works the user may still be watching it.
       if (speaking && !agentRunning && !pendingAi) gazeMutedUntil = now + HEAD_SETTLE_MS;
       if (motion.flick && settings.flick && !msg.mouthOpen && !agentRunning && !recentering) moveByFlick(motion.flick, now);
       if (now < gazeMutedUntil) {
+        diag.muted = (diag.muted ?? 0) + 1;
         dwellBlockedUntil = Math.max(dwellBlockedUntil, gazeMutedUntil);
         rawWindow = [];
         filter = createFilter();
@@ -306,8 +317,16 @@
         drawBox();
         return;
       }
-      const raw = predict(model, msg.features);
+      const eyes = predict(model, msg.features);
+      const raw = settings.headAssist ? { x: eyes.x + shift.x, y: eyes.y + shift.y } : eyes;
       if (recentering?.collecting) recentering.samples.push(raw);
+      // Required after being turned back on: no gaze clicks until it's done.
+      if (needsRecenter) {
+        if (target) setTarget(null, now);
+        ui.ring.style.display = 'none';
+        if (!recentering && now >= recenterRetryAt && !document.hidden) recenter(t.recenterRequired);
+        return;
+      }
       // Median first: a single wild frame would otherwise jolt the highlight.
       rawWindow = [...rawWindow.slice(1 - RAW_WINDOW), raw];
       lastScreen = filter(median(rawWindow.map((p) => p.x)), median(rawWindow.map((p) => p.y)), now);
@@ -349,22 +368,6 @@
       return null;
     }
 
-    // A gaze click tells us what the user was really looking at, so the gap between
-    // the cursor and that item is measured drift. A cursor already on it teaches nothing.
-    function clickByGaze(el) {
-      if (lastScreen && gazeIsFresh()) learnDrift(gaze, el);
-      activate(el);
-    }
-
-    function learnDrift(point, el) {
-      const r = el.getBoundingClientRect();
-      const dx = Math.max(r.left, Math.min(r.right, point.x)) - point.x;
-      const dy = Math.max(r.top, Math.min(r.bottom, point.y)) - point.y;
-      const limit = (v) => Math.max(-CLICK_BIAS_LIMIT, Math.min(CLICK_BIAS_LIMIT, v));
-      // Capped: a run of clicks on wrong items must not walk the gaze off screen.
-      if (dx || dy) saveBias({ x: limit(bias.x + dx * CLICK_LEARN_RATE), y: limit(bias.y + dy * CLICK_LEARN_RATE) });
-    }
-
     function labelOf(el) {
       const isButtonInput = el.matches('input[type=button], input[type=submit]');
       const label = el.getAttribute('aria-label') || el.innerText?.trim() || (isButtonInput && el.value)
@@ -383,20 +386,24 @@
     }
 
     // One dot, two seconds: for when the user has shifted and the cursor is off.
-    function recenter() {
+    function recenter(prompt = t.recenterLook) {
       if (!activeModel()) { toast(t.calibrateFirst); return; }
       if (recentering) return;
       const point = { x: innerWidth / 2, y: innerHeight / 2 };
       hideNumbers();
       recentering = { samples: [], collecting: false };
       ui.recenter.style.cssText = `display:block;left:${point.x}px;top:${point.y}px`;
-      toast(t.recenterLook, RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
+      toast(prompt, RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
       setTimeout(() => { if (recentering) recentering.collecting = true; }, RECENTER_SETTLE_MS);
       setTimeout(() => {
         const { samples } = recentering;
         recentering = null;
         ui.recenter.style.display = 'none';
-        if (samples.length < RECENTER_MIN_SAMPLES) { toast(t.recenterFail); return; }
+        if (samples.length < RECENTER_MIN_SAMPLES) {
+          recenterRetryAt = performance.now() + RECENTER_RETRY_MS;
+          toast(t.recenterFail);
+          return;
+        }
         // screenToViewport is a pure offset, so its inverse comes from a zero point.
         const origin = screenToViewport({ x: 0, y: 0 });
         const next = {
@@ -405,6 +412,8 @@
         };
         // An offset this big means the calibration itself is wrong. Saving it would
         // only hide that, and pin the gaze to a screen edge once anything changes.
+        // Either way the requirement ends: retrying forever would lock the user out.
+        chrome.storage.local.remove('needsRecenter');
         if (Math.hypot(next.x, next.y) > RECENTER_MAX_PX) { toast(t.recenterTooFar, 5000); return; }
         saveBias(next);
         toast(t.recenterDone);
@@ -768,7 +777,7 @@
           // A highlight left over from an unusable model says nothing about the gaze.
           if (!activeModel()) { toast(t.calibrateFirst); break; }
           const el = currentTarget();
-          if (el) clickByGaze(el);
+          if (el) activate(el);
           else toast(activeModel() ? t.noTarget : t.calibrateFirst);
           break;
         }
@@ -819,6 +828,7 @@
     const diag = { frames: 0, face: 0, commands: 0 };
 
     const onRuntimeMessage = (msg, _sender, sendResponse) => {
+      if (msg.type === 'notice') { toast(t[msg.key], 5000); return; }
       if (!settings.enabled) return;
       if (msg.type === 'agent-snapshot') { sendResponse(agentSnapshot()); return; }
       if (msg.type === 'agent-act') { sendResponse(agentAct(msg.act)); return; }
@@ -854,7 +864,8 @@
       ui.help.style.display = 'none';
     }
 
-    function applyStored({ settings: s, model: m, gazeBias: b }) {
+    function applyStored({ settings: s, model: m, gazeBias: b, needsRecenter: n }) {
+      if (n !== undefined) needsRecenter = Boolean(n);
       if (b !== undefined) bias = b ?? { x: 0, y: 0 };
       if (s !== undefined) {
         // Start the dwell timer fresh, or switching dwell on would instantly
@@ -869,7 +880,7 @@
       }
     }
 
-    chrome.storage.local.get(['settings', 'model', 'gazeBias']).then(applyStored);
+    chrome.storage.local.get(['settings', 'model', 'gazeBias', 'needsRecenter']).then(applyStored);
     addEventListener('pagehide', () => {
       if (reader?.reading) chrome.runtime.sendMessage({ type: 'tts-stop' }).catch(() => {});
     }, { signal: pageEvents.signal });
@@ -878,6 +889,7 @@
       if (changes.settings) applyStored({ settings: changes.settings.newValue ?? {} });
       if (changes.model) applyStored({ model: changes.model.newValue ?? null });
       if (changes.gazeBias) applyStored({ gazeBias: changes.gazeBias.newValue ?? null });
+      if (changes.needsRecenter) applyStored({ needsRecenter: changes.needsRecenter.newValue ?? false });
     };
     chrome.storage.onChanged.addListener(onStorageChange);
 

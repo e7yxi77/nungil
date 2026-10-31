@@ -1,4 +1,4 @@
-// How-to steps after calibration. Content scripts don't run on extension pages, so
+// How-to steps after calibration, each playing a demo. Content scripts don't run on extension pages, so
 // gaze can't press these buttons: "다음" spoken, or the arrow keys, moves on as well.
 const $ = (id) => document.getElementById(id);
 const steps = [...document.querySelectorAll('.step')];
@@ -15,8 +15,11 @@ function show(next) {
   steps.forEach((s, i) => s.classList.toggle('on', i === index));
   dots.forEach((d, i) => d.classList.toggle('on', i === index));
   $('prev').hidden = index === 0;
-  $('next').textContent = index === steps.length - 1 ? '시작하기' : '다음';
+  $('nextLabel').textContent = index === steps.length - 1 ? '시작하기' : '다음';
   $('practiceText').textContent = '';
+  GuideDemo.stop();
+  const scene = steps[index].querySelector('.scene');
+  if (scene) GuideDemo.play(scene, steps[index].querySelector('.caption'));
 }
 
 async function finish() {

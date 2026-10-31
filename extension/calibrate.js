@@ -110,7 +110,7 @@ $('allow').addEventListener('click', async () => {
   previewStream.getAudioTracks().forEach((track) => track.stop());
   $('preview').srcObject = previewStream;
   show('ready');
-  await saveSettings({ enabled: true });
+  await saveSettings({ enabled: true, standby: false });
   // The tracker may have started and failed before permission existed.
   chrome.runtime.sendMessage({ type: 'restart' }).catch(() => {});
 });
@@ -206,7 +206,7 @@ async function runCalibration() {
   const errorX = GazeModel.crossValidate(samples, everyDot, GazeModel.errorX);
   const errorY = GazeModel.crossValidate(samples, everyDot, GazeModel.errorY);
   await chrome.storage.local.set({ model: { ...model, errorPx, errorX, errorY, version: NUNGIL_MODEL_VERSION, at: Date.now() } });
-  await chrome.storage.local.remove('gazeBias');
+  await chrome.storage.local.remove(['gazeBias', 'needsRecenter']);
   show('done');
   $('success').toggleAttribute('hidden', false);
   $('resultText').textContent = describeError(errorPx);
@@ -239,5 +239,5 @@ navigator.permissions.query({ name: 'camera' }).then(async (camera) => {
   previewStream = await navigator.mediaDevices.getUserMedia({ video: true });
   $('preview').srcObject = previewStream;
   show('ready');
-  await saveSettings({ enabled: true });
+  await saveSettings({ enabled: true, standby: false });
 });

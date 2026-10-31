@@ -3,140 +3,167 @@
 <head>
   <meta charset="utf-8">
   <title>눈길 사용법</title>
-  <style>
-    :root { --bg: #f5f5f7; --card: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0, 0, 0, .1); --accent: #0071e3; --tint: rgba(0, 113, 227, .1); }
-    @media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1c1c1e; --fg: #f5f5f7; --muted: #a1a1a6; --line: rgba(255, 255, 255, .14); --accent: #0a84ff; --tint: rgba(10, 132, 255, .18); } }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font: 19px/1.5 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -.01em; word-break: keep-all; -webkit-font-smoothing: antialiased; }
-    main { flex: 1; display: grid; place-items: center; padding: 48px 16px 16px; overflow: auto; }
-    .step { display: none; width: 100%; max-width: 860px; text-align: center; }
-    .step.on { display: block; animation: enter .6s cubic-bezier(.2, .8, .2, 1); }
-    @keyframes enter { from { opacity: 0; transform: translateY(10px); } }
-    h1 { font-size: clamp(38px, 6vw, 60px); line-height: 1.08; font-weight: 700; letter-spacing: -.035em; margin: 0 0 14px; }
-    .lead { color: var(--muted); font-size: clamp(19px, 2.2vw, 24px); line-height: 1.38; letter-spacing: -.015em; margin: 0 auto 32px; max-width: 680px; }
-    .card { background: var(--card); border-radius: 22px; padding: 22px 26px; box-shadow: 0 0 0 .5px var(--line); text-align: left; }
-    .rows { max-width: 680px; margin: 0 auto; padding: 8px 26px; }
-    .rows div { display: flex; justify-content: space-between; gap: 20px; padding: 13px 0; border-top: .5px solid var(--line); font-size: 17px; }
-    .rows div:first-child { border-top: 0; }
-    .rows b { font-weight: 600; flex: none; }
-    .rows span { color: var(--muted); text-align: right; }
-    .note { color: var(--muted); font-size: 15px; margin: 18px auto 0; max-width: 640px; }
-    .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 14px; max-width: 560px; margin: 0 auto 26px; padding: 12px 18px; border-radius: 16px; background: var(--card); box-shadow: 0 0 0 .5px var(--line); }
-    .toolbar .address { flex: 1; height: 30px; border-radius: 15px; background: var(--bg); }
-    .toolbar svg { width: 26px; height: 26px; color: var(--muted); }
-    .toolbar .puzzle { padding: 6px; width: 40px; height: 40px; border-radius: 50%; color: var(--accent); background: var(--tint); box-shadow: 0 0 0 3px var(--accent); }
-    ol.how { list-style: none; counter-reset: n; margin: 0 auto; padding: 0; max-width: 620px; text-align: left; }
-    ol.how li { counter-increment: n; position: relative; padding: 4px 0 20px 54px; }
-    ol.how li::before { content: counter(n); position: absolute; left: 0; top: 0; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; text-align: center; background: var(--tint); color: var(--accent); font-weight: 600; }
-    .pad { display: grid; grid-template: repeat(3, 84px) / repeat(3, 84px); gap: 10px; justify-content: center; margin: 0 auto 18px; }
-    .pad div { display: grid; place-items: center; border-radius: 20px; background: var(--card); box-shadow: 0 0 0 .5px var(--line); font-size: 30px; color: var(--muted); transition: background .25s, color .25s, transform .25s cubic-bezier(.2, .8, .2, 1); }
-    .pad .up { grid-area: 1 / 2; } .pad .left { grid-area: 2 / 1; } .pad .right { grid-area: 2 / 3; } .pad .down { grid-area: 3 / 2; }
-    .pad .hit { background: var(--accent); color: #fff; transform: scale(1.06); }
-    #practiceText { min-height: 1.5em; font-weight: 600; color: var(--accent); margin: 0; }
-    footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 28px 26px; }
-    .dots { display: flex; gap: 8px; }
-    .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); transition: background .3s; }
-    .dots i.on { background: var(--accent); }
-    button { font: inherit; font-size: 17px; font-weight: 600; padding: 12px 26px; border-radius: 980px; border: 0; background: var(--accent); color: #fff; cursor: pointer; transition: transform .1s ease-out; }
-    button:active { transform: scale(.97); }
-    button.quiet { background: var(--tint); color: var(--accent); }
-    button[hidden] { display: none; }
-    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-    .say { color: var(--muted); font-size: 14px; }
-    @media (prefers-reduced-motion: reduce) { .step.on { animation: fade .3s; } @keyframes fade { from { opacity: 0; } } * { transition: none !important; } }
-    @media (max-width: 560px) { footer { padding: 14px 16px 20px; } .say { display: none; } .pad { grid-template: repeat(3, 68px) / repeat(3, 68px); } }
-  </style>
+  <link rel="stylesheet" href="guide.css">
 </head>
 <body>
   <main>
     <section class="step" aria-labelledby="s0">
       <h1 id="s0">등록이 완료됐어요</h1>
-      <p class="lead">이제 사용법을 알아봐요. 버튼을 누르거나 "다음"이라고 말하면 넘어가요.</p>
+      <p class="lead">이제 사용법을 알아봐요. 직접 움직이는 화면으로 보여 드릴게요. 버튼을 누르거나 "다음"이라고 말하면 넘어가요.</p>
     </section>
 
     <section class="step" aria-labelledby="s1">
       <h1 id="s1">눈길은 여기 있어요</h1>
-      <p class="lead">크롬 오른쪽 위의 퍼즐 조각 아이콘을 눌러 찾을 수 있어요.</p>
-      <div class="toolbar" aria-hidden="true">
-        <div class="address"></div>
-        <svg class="puzzle" viewBox="0 0 24 24" fill="currentColor"><path d="M10 3a2 2 0 0 1 4 0v2h4a1 1 0 0 1 1 1v4h2a2 2 0 0 1 0 4h-2v5a1 1 0 0 1-1 1h-5v-2a2 2 0 0 0-4 0v2H5a1 1 0 0 1-1-1v-5h2a2 2 0 0 0 0-4H4V6a1 1 0 0 1 1-1h5z"/></svg>
+      <div class="scene" data-demo="toolbar">
+        <div class="browser">
+          <div class="bar">
+            <div class="address">example.com</div>
+            <span class="tool pinned" id="d-pinned">눈</span>
+            <span class="tool" id="d-puzzle">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 3a2 2 0 0 1 4 0v2h4a1 1 0 0 1 1 1v4h2a2 2 0 0 1 0 4h-2v5a1 1 0 0 1-1 1h-5v-2a2 2 0 0 0-4 0v2H5a1 1 0 0 1-1-1v-5h2a2 2 0 0 0 0-4H4V6a1 1 0 0 1 1-1h5z"/></svg>
+            </span>
+          </div>
+          <div class="menu" id="d-menu">
+            <div class="menu-title">확장 프로그램</div>
+            <div class="menu-row"><span class="tool small">눈</span><span class="grow">눈길</span><span class="pin" id="d-pin">📌</span></div>
+          </div>
+          <div class="mini" id="d-mini">
+            <b>눈길</b>
+            <div class="mini-row">켜기 <i class="sw on"></i></div>
+            <div class="mini-row">응시 클릭 <i class="sw on"></i></div>
+            <div class="mini-btn">시선 맞춤</div>
+          </div>
+        </div>
       </div>
-      <ol class="how">
-        <li>주소창 오른쪽의 <b>퍼즐 조각</b>을 눌러요.</li>
-        <li><b>눈길</b> 옆의 <b>핀</b>을 눌러 고정해요. 툴바에 아이콘이 항상 보여요.</li>
-        <li>아이콘을 누르면 설정창이 열려요.</li>
-      </ol>
+      <p class="caption" aria-live="polite"></p>
     </section>
 
     <section class="step" aria-labelledby="s2">
       <h1 id="s2">설정창에서 할 수 있는 일</h1>
-      <p class="lead">필요한 것만 켜서 쓰세요. 크롬을 나가면 카메라와 마이크는 저절로 꺼지고, 돌아오면 다시 켜져요.</p>
-      <div class="card rows">
-        <div><b>켜기</b><span>눈길 전체를 켜고 끄기</span></div>
-        <div><b>응시 클릭, 응시 시간</b><span>바라봐서 누르기와 그 시간</span></div>
-        <div><b>입 벌리기</b><span>아래로 스크롤</span></div>
-        <div><b>고개 까딱</b><span>옆 항목으로 넘어가기</span></div>
-        <div><b>AI 자동 수행</b><span>말한 일을 AI가 대신하기</span></div>
-        <div><b>소리 조작</b><span>말 대신 팝 소리와 허밍</span></div>
-        <div><b>시선 맞춤, 시선 교정</b><span>어긋난 시선 바로잡기</span></div>
+      <div class="scene tall" data-demo="settings">
+        <div class="panel-mock">
+          <div class="pm-row" id="r-on"><span>켜기</span><i class="sw on" id="t-on"></i></div>
+          <div class="pm-row" id="r-dwell"><span>응시 클릭</span><i class="sw on" id="t-dwell"></i></div>
+          <div class="pm-row" id="r-assist"><span>머리 보조</span><i class="sw on" id="t-assist"></i></div>
+          <div class="pm-row" id="r-mouth"><span>입 벌리기</span><i class="sw on" id="t-mouth"></i></div>
+          <div class="pm-row" id="r-flick"><span>고개 까딱</span><i class="sw on" id="t-flick"></i></div>
+          <div class="pm-row" id="r-ai"><span>AI 자동 수행</span><i class="sw on" id="t-ai"></i></div>
+          <div class="pm-row" id="r-sound"><span>소리 조작</span><i class="sw" id="t-sound"></i></div>
+          <div class="pm-btn" id="b-center">시선 맞춤</div>
+          <div class="pm-btn solid" id="b-cal">시선 교정</div>
+        </div>
       </div>
+      <p class="caption" aria-live="polite"></p>
     </section>
 
     <section class="step" aria-labelledby="s3">
       <h1 id="s3">바라보면 눌려요</h1>
-      <p class="lead">누르고 싶은 항목을 바라보면 파란 테두리가 생겨요. 0.5초 뒤 동그란 카운트다운이 시작되고, 1.5초가 지나면 눌려요.</p>
-      <div class="card rows">
-        <div><b>옆 항목이 잡히면</b><span>고개를 까딱해 옮겨요. "번호"로 골라도 돼요</span></div>
-        <div><b>결제나 삭제 버튼이면</b><span>빨간 테두리가 떠요. "클릭"이라고 말해 확인해요</span></div>
-        <div><b>아래로 내리려면</b><span>입을 1초쯤 벌려요</span></div>
+      <div class="scene" data-demo="dwell">
+        <div class="page">
+          <div class="page-row">
+            <div class="item" id="i1">뉴스</div>
+            <div class="item" id="i2">메일</div>
+            <div class="item" id="i3">결제하기</div>
+          </div>
+        </div>
+        <div class="count" id="d-count"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16"/></svg></div>
+        <div class="bubble" id="d-bubble"></div>
       </div>
+      <p class="caption" aria-live="polite"></p>
     </section>
 
     <section class="step" aria-labelledby="s4">
       <h1 id="s4">고개를 까딱해 보세요</h1>
-      <p class="lead">원하는 버튼이 아니면, 그쪽으로 고개를 빠르게 까딱하고 돌아오세요. 옆 항목으로 넘어가요. 머리는 이때만 쓰여요. 지금 연습해 볼 수 있어요.</p>
-      <div class="pad" aria-hidden="true">
-        <div class="up" data-dir="up">↑</div>
-        <div class="left" data-dir="left">←</div>
-        <div class="right" data-dir="right">→</div>
-        <div class="down" data-dir="down">↓</div>
+      <div class="flick-row">
+        <div class="scene half" data-demo="flick">
+          <svg class="head" id="d-head" viewBox="0 0 80 80" aria-hidden="true">
+            <circle cx="40" cy="40" r="32"/>
+            <circle class="feat" cx="29" cy="34" r="3.5"/>
+            <circle class="feat" cx="51" cy="34" r="3.5"/>
+            <path class="feat-line" d="M30 52 Q40 59 50 52"/>
+          </svg>
+          <div class="page-row low">
+            <div class="item" id="f1">홈</div>
+            <div class="item" id="f2">뉴스</div>
+            <div class="item" id="f3">쇼핑</div>
+          </div>
+        </div>
+        <div class="practice">
+          <div class="pad" aria-hidden="true">
+            <div class="up" data-dir="up">↑</div>
+            <div class="left" data-dir="left">←</div>
+            <div class="right" data-dir="right">→</div>
+            <div class="down" data-dir="down">↓</div>
+          </div>
+          <p class="pad-label">직접 해 보세요</p>
+        </div>
       </div>
+      <p class="caption" aria-live="polite"></p>
       <p id="practiceText" role="status" aria-live="polite"></p>
     </section>
 
     <section class="step" aria-labelledby="s5">
       <h1 id="s5">시선이 어긋나면</h1>
-      <p class="lead">자세가 바뀌면 조금씩 어긋날 수 있어요. 바로 고칠 수 있어요.</p>
-      <div class="card rows">
-        <div><b>"시선 맞춤"</b><span>가운데 점을 2초 보면 끝. 설정창 버튼도 같아요</span></div>
-        <div><b>시선 교정</b><span>자리나 조명이 크게 바뀌면 설정창에서 다시 해요</span></div>
+      <div class="scene" data-demo="recenter">
+        <div class="browser">
+          <div class="bar">
+            <div class="address">example.com</div>
+            <span class="tool pinned shown" id="r-icon">눈</span>
+          </div>
+          <div class="page low-page">
+            <div class="item wide" id="r-a">뉴스</div>
+            <div class="item wide" id="r-b">메일</div>
+          </div>
+          <div class="mini" id="r-mini">
+            <b>눈길</b>
+            <div class="mini-btn" id="r-btn">시선 맞춤</div>
+          </div>
+          <div class="center-dot" id="r-dot"></div>
+        </div>
       </div>
+      <p class="caption" aria-live="polite"></p>
     </section>
 
     <section class="step" aria-labelledby="s6">
       <h1 id="s6">말로 조작해요</h1>
-      <p class="lead">말하는 동안에는 시선이 잠시 멈춰요. "클릭"이라고 하면 말하기 전에 보던 항목이 눌려요. "도움말"로 전체 목록을 볼 수 있어요.</p>
-      <div class="card rows">
-        <div><b>"클릭"</b><span>바라보는 항목 누르기</span></div>
-        <div><b>"번호", "3번"</b><span>번호를 붙여서 고르기</span></div>
-        <div><b>"아래로", "위로", "뒤로"</b><span>스크롤과 페이지 이동</span></div>
-        <div><b>"입력 안녕하세요"</b><span>글자 입력</span></div>
-        <div><b>"읽어줘", "단순 보기"</b><span>본문 읽어 주기, 본문만 보기</span></div>
-        <div><b>"멈춰", "다시 시작"</b><span>일시정지와 재개</span></div>
+      <div class="scene" data-demo="voice">
+        <div class="page" id="v-page">
+          <div class="page-row">
+            <div class="item" id="v1">뉴스</div>
+            <div class="item" id="v2">메일</div>
+            <div class="item" id="v3">지도</div>
+          </div>
+          <div class="lines"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="bubble" id="v-bubble"></div>
       </div>
+      <p class="caption" aria-live="polite"></p>
     </section>
 
     <section class="step" aria-labelledby="s7">
       <h1 id="s7">AI에게 맡겨 보세요</h1>
-      <p class="lead">설정창에서 <b>ChatGPT 로그인</b>을 하면, 말한 일을 AI가 대신해요.</p>
-      <div class="card rows">
-        <div><b>"지메일 들어가서 메일 작성해줘"</b><span>끝까지 알아서 수행</span></div>
-        <div><b>"로그인 버튼 눌러줘"</b><span>화면에서 찾아 누르기</span></div>
-        <div><b>"요약해줘"</b><span>짧게 요약해 읽어 주기</span></div>
-        <div><b>"취소"</b><span>AI 작업 바로 멈추기</span></div>
+      <div class="scene" data-demo="ai">
+        <div class="browser">
+          <div class="bar">
+            <div class="address" id="a-address">example.com</div>
+            <span class="tool pinned shown" id="a-icon">눈</span>
+          </div>
+          <div class="mail" id="a-mail">
+            <div class="item compose" id="a-compose">편지쓰기</div>
+            <div class="draft" id="a-draft">
+              <div class="draft-line">받는 사람</div>
+              <div class="draft-line body" id="a-body"></div>
+              <div class="item send" id="a-send">보내기</div>
+            </div>
+          </div>
+          <div class="mini" id="a-mini">
+            <b>눈길</b>
+            <div class="mini-btn" id="a-login">ChatGPT 로그인</div>
+          </div>
+        </div>
+        <div class="bubble" id="a-bubble"></div>
       </div>
-      <p class="note">전송, 결제, 삭제는 AI가 혼자 누르지 않고 먼저 물어봐요. 비밀번호도 직접 입력해요. AI를 쓸 때는 페이지 내용과 말한 요청이 내 ChatGPT 계정으로 전송돼요.</p>
+      <p class="caption" aria-live="polite"></p>
     </section>
 
     <section class="step" aria-labelledby="s8">
@@ -145,15 +172,18 @@
     </section>
   </main>
   <footer>
-    <button id="prev" class="quiet">이전</button>
-    <div>
-      <div class="dots" id="dots" aria-hidden="true"></div>
+    <div class="dock">
+      <div class="side"><button id="prev" class="quiet"><span aria-hidden="true">‹</span> 이전</button></div>
+      <div class="middle">
+        <div class="dots" id="dots" aria-hidden="true"></div>
+        <span class="say">"다음"이라고 말해도 넘어가요</span>
+      </div>
+      <div class="side end"><button id="next"><span id="nextLabel">다음</span> <span aria-hidden="true">›</span></button></div>
     </div>
-    <span class="say">"다음"이라고 말해도 돼요</span>
-    <button id="next">다음</button>
   </footer>
   <script src="lib/strings.js"></script>
   <script src="lib/gaze-model.js"></script>
+  <script src="guide-demo.js"></script>
   <script src="guide.js"></script>
 </body>
 </html>

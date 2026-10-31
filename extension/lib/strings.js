@@ -23,7 +23,10 @@
       agentTooLong: '단계가 너무 많아서 멈췄어요',
       agentOff: 'AI 자동 수행이 꺼져 있어요',
       agentSensitive: '비밀번호와 결제 정보는 직접 입력해 주세요',
+      poweredOn: '눈길을 켰어요',
+      poweredOff: '눈길을 껐어요. 카메라는 꺼졌고, "눈길 켜줘"라는 말만 기다려요',
       recenterLook: '가운데 점을 바라봐 주세요',
+      recenterRequired: '다시 켰으니 시선을 맞출게요. 가운데 점을 바라봐 주세요',
       recenterDone: '시선을 다시 맞췄어요',
       recenterFail: '얼굴을 찾지 못했어요. 다시 해 보세요',
       recenterTooFar: '시선이 너무 많이 어긋났어요. 팝업에서 시선 교정을 다시 해 주세요',
@@ -36,6 +39,7 @@
       help: [
         ['지메일 들어가서 메일 작성해줘', 'AI가 끝까지 수행'],
         ['취소', 'AI 작업, 번호, 도움말 닫기'],
+        ['눈길 켜줘 / 꺼줘', '눈길 켜고 끄기'],
         ['시선 맞춤', '커서가 어긋날 때 바로 맞추기'],
         ['로그인 버튼 눌러줘', 'AI가 찾아서 누르기'],
         ['요약해줘', '본문을 AI로 요약해 읽기'],
@@ -53,5 +57,5 @@
   };
   globalThis.nungilStrings = () => STRINGS.ko;
   globalThis.NUNGIL_MODEL_VERSION = 5; // bump when stored models can't be read any more
-  globalThis.NUNGIL_DEFAULTS = { enabled: false, dwell: true, dwellMs: 1500, mouth: true, flick: true, agent: true, sound: false };
+  globalThis.NUNGIL_DEFAULTS = { enabled: false, dwell: true, dwellMs: 1500, mouth: true, flick: true, headAssist: true, standby: false, agent: true, sound: false };
 })();

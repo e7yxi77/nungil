@@ -15,6 +15,8 @@
     read: ['읽어줘', '읽어', '글읽기', '읽기', 'read', 'readaloud'],
     summarize: ['요약', '요약줘', '요약읽어줘', 'summarize', 'summary', 'summarizethis'],
     simplify: ['단순보기','간단히보기', '글만보기', 'simplify', 'readerview'],
+    powerOn: ['눈길켜줘', '눈길켜', '눈길켜기', '눈길켜주세요', '눈길시작', '눈낄켜줘'],
+    powerOff: ['눈길꺼줘', '눈길꺼', '눈길끄기', '눈길꺼주세요', '눈길종료', '눈낄꺼줘'],
     next: ['다음', '다음으로', '넘어가', '시작하기', 'next'],
     recenter: ['시선맞춤', '시선맞추기', '재교정', '영점', 'recenter', 'realign'],
     pause: ['멈춰', '정지', '일시정지', 'pause', 'stop'],

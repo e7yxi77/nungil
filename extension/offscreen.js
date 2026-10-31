@@ -47,7 +47,12 @@ async function startSoundControl() {
 }
 
 async function main() {
-  if (new URLSearchParams(location.search).get('sound') === '1') startSoundControl();
+  const params = new URLSearchParams(location.search);
+  if (params.get('sound') === '1') startSoundControl();
+  if (params.get('camera') === '0') {
+    setStatus({ camera: 'off' });
+    return;
+  }
   try {
     video.srcObject = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' },

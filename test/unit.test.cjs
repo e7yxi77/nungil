@@ -545,3 +545,74 @@ test('a flick maps to the side the user actually moved toward', () => {
   assert.strictEqual(flickDirection('pitch+'), 'down');
   assert.strictEqual(flickDirection('pitch-'), 'up');
 });
+
+test('head assist keeps gaze accurate when the seat shifts or the head turns', () => {
+  const { createHeadAssist } = globalThis.GazeModel;
+  const { model } = fit(physicalCalibration(55));
+  const POINTS = [[300, 200], [960, 540], [1600, 300], [500, 850], [1500, 900]];
+  const errorAt = (position, assisted) => POINTS.reduce((sum, [px, py]) => {
+    const f = physicalFrame(px, py, position);
+    const p = predict(model, f);
+    const assist = createHeadAssist(model);
+    const shift = assisted ? assist(f, 0, false) : { x: 0, y: 0 };
+    return sum + Math.hypot(p.x + shift.x - px, p.y + shift.y - py);
+  }, 0) / POINTS.length;
+  for (const [name, position] of Object.entries({
+    'shifted sideways': { x: 6 },
+    'sitting higher': { y: -15 },
+    'head partly turned toward the point': { headShare: 0.5 },
+    'both': { x: 4, headShare: 0.4 },
+  })) {
+    const without = errorAt(position, false), withAssist = errorAt(position, true);
+    assert.ok(withAssist < without * 0.6, `${name}: ${Math.round(without)}px without, ${Math.round(withAssist)}px with`);
+  }
+});
+
+test('head assist: turning with the eyes held moves the point the same way, and quick swings are ignored', () => {
+  const { createHeadAssist } = globalThis.GazeModel;
+  const { model } = fit(physicalCalibration(55));
+  const assist = createHeadAssist(model);
+  const rest = physicalFrame(960, 540);
+  const base = assist(rest, 0, false).x;
+  const turned = [...rest];
+  turned[2] -= 0.05; // toward the user's right, with the eyes unmoved
+  let shift = base;
+  for (let t = 40; t < 2000; t += 40) shift = assist(turned, t, false).x;
+  assert.ok(shift - base > 40, `moved right by ${Math.round(shift - base)}px`);
+  const frozen = assist(rest, 2040, true).x;
+  assert.strictEqual(assist(rest, 2080, true).x, frozen, 'frozen during a swing');
+});
+
+test('a model with no eye weights gets no head assist', () => {
+  const { createHeadAssist } = globalThis.GazeModel;
+  const assist = createHeadAssist({ mean: [0, 0, 0, 0], wx: [0, 5, 0, 0], wy: [0, 0, 5] });
+  const shift = assist([0, 0, 0, 0, 500, 500, -40], 0, false);
+  assert.ok(Math.abs(shift.x) < 1e-9 && Math.abs(shift.y) < 1e-9);
+});
+
+test('"눈길 켜줘" and "눈길 꺼줘" turn it on and off, in the ways people say them', () => {
+  for (const say of ['눈길 켜줘', '눈길 켜 줘', '눈길 켜', '눈길 켜 주세요', '눈길 시작', '눈길 켜기']) assert.strictEqual(parseCommand(say)?.name, 'powerOn', say);
+  for (const say of ['눈길 꺼줘', '눈길 꺼 줘', '눈길 꺼', '눈길 꺼 주세요', '눈길 종료', '눈길 끄기']) assert.strictEqual(parseCommand(say)?.name, 'powerOff', say);
+  assert.strictEqual(parseCommand('불 꺼줘'), null);
+});
+
+test('resting head sway never counts as head movement', () => {
+  const { createHeadFlick } = globalThis.GazeModel;
+  for (let seed = 1; seed < 12; seed++) {
+    const detect = createHeadFlick();
+    const r = rng(seed);
+    let moving = 0;
+    for (let t = 0; t < 20000; t += 40) {
+      // A slow sway of about 1.5 degrees, plus pose noise.
+      const yaw = 0.026 * Math.sin(t / 900) + r() * 0.008;
+      const pitch = 0.018 * Math.sin(t / 1300) + r() * 0.008;
+      if (detect(yaw, pitch, t).moving) moving++;
+    }
+    assert.strictEqual(moving, 0, `seed ${seed}`);
+  }
+});
+
+test('a modest flick of about 4 degrees still counts', () => {
+  assert.deepStrictEqual(replayHead(flickPath(0.075, 0, 130, 180), 400), ['yaw+']);
+  assert.deepStrictEqual(replayHead(flickPath(0, -0.055, 130, 180), 400), ['pitch-']);
+});

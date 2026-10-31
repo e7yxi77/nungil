@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const TOGGLES = ['mouth', 'flick', 'agent', 'sound'];
+const TOGGLES = ['headAssist', 'mouth', 'flick', 'agent', 'sound'];
 let signedIn = false;
 const SELF_HEAL_INTERVAL_MS = 60_000;
 const PING_TIMEOUT_MS = 3000;
@@ -49,7 +49,7 @@ async function render() {
   $('codex').textContent = signedIn ? 'ChatGPT 로그아웃' : 'ChatGPT 로그인 (AI 기능)';
   const { model } = stored;
   const failed = (v) => String(v ?? '').startsWith('error');
-  const STATES = { on: '켜짐', listening: '듣는 중' };
+  const STATES = { on: '켜짐', off: '꺼짐', listening: '듣는 중' };
   const say = (v) => STATES[v] ?? (failed(v) ? `오류 (${String(v).slice(6)})` : v ?? '-');
   setCell('camera', say(status.camera), failed(status.camera));
   setCell('face', status.face === undefined ? '-' : status.face ? '인식됨' : '안 보임', status.face === false);
@@ -66,7 +66,7 @@ $('enabled').addEventListener('change', async (e) => {
     chrome.tabs.create({ url: 'calibrate.html' });
     return;
   }
-  await patchSettings({ enabled: e.target.checked });
+  await patchSettings({ enabled: e.target.checked, standby: false });
 });
 $('dwell').addEventListener('change', (e) => patchSettings({ dwell: e.target.checked }));
 for (const id of TOGGLES) $(id).addEventListener('change', (e) => patchSettings({ [id]: e.target.checked }));

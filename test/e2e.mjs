@@ -106,6 +106,11 @@ try {
   const setSettings = (patch) => sw.evaluate(async (p) => {
     const { settings } = await chrome.storage.local.get('settings');
     await chrome.storage.local.set({ settings: { ...NUNGIL_DEFAULTS, ...settings, ...p } });
+    // Most tests aren't about the realignment that follows turning back on.
+    if (p.enabled) {
+      await new Promise((r) => setTimeout(r, 150));
+      await chrome.storage.local.remove('needsRecenter');
+    }
   }, patch);
 
   await check('tracker starts: camera on, model loaded, real face detected', async () => {
@@ -784,6 +789,23 @@ try {
     assert.ok(Math.abs(drawn.left - (box.x - 4)) < 3, `corrected cursor highlights B after reload: ${drawn.left} vs ${box.x}`);
   });
 
+  await check('pressing never changes the gaze offset', async () => {
+    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
+    await page.waitForTimeout(100);
+    const box = await page.locator('#b').boundingBox();
+    const x = box.x + box.width + 60 + offset.x, y = box.y + box.height / 2 + offset.y;
+    const end = Date.now() + 900;
+    while (Date.now() < end) {
+      await sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, [0, 0, 0, 0, x, y, -40]]);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    const before = await clicks();
+    await say({ name: 'click' });
+    await until(async () => (await clicks()).b === before.b + 1, 'clicked');
+    await page.waitForTimeout(150);
+    assert.strictEqual((await sw.evaluate(() => chrome.storage.local.get('gazeBias'))).gazeBias, undefined);
+  });
+
   await check('recenter refuses a huge offset instead of pinning the gaze to an edge', async () => {
     await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
     await page.waitForTimeout(100);
@@ -797,23 +819,6 @@ try {
     const { gazeBias } = await sw.evaluate(() => chrome.storage.local.get('gazeBias'));
     assert.strictEqual(gazeBias, undefined, JSON.stringify(gazeBias));
     assert.ok((await page.evaluate(() => document.getElementById('__nungil-host').shadowRoot.querySelector('.toast').textContent)).includes('교정'));
-  });
-
-  await check('a gaze click on an item the cursor missed slightly corrects the drift', async () => {
-    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
-    await page.waitForTimeout(100);
-    const box = await page.locator('#b').boundingBox();
-    const x = box.x + box.width + 60 + offset.x, y = box.y + box.height / 2 + offset.y;
-    const end = Date.now() + 800;
-    while (Date.now() < end) {
-      await sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, [0, 0, 0, 0, x, y, -40]]);
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    await say({ name: 'click' });
-    await until(async () => (await sw.evaluate(() => chrome.storage.local.get('gazeBias'))).gazeBias, 'bias saved');
-    const { gazeBias } = await sw.evaluate(() => chrome.storage.local.get('gazeBias'));
-    assert.ok(gazeBias.x < -5, `pulled left toward the button: ${JSON.stringify(gazeBias)}`);
-    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
   });
 
   await check('a model from before this update is ignored, not used', async () => {
@@ -971,6 +976,79 @@ try {
     results.push(`INFO after restart voice=${s?.voice ?? 'none'} tabs=${(await context.pages()).map((p) => p.url()).join(' | ')}`);
   });
 
+  await check('turning back on requires a recenter: no gaze clicks until it is done', async () => {
+    await page.bringToFront();
+    const setRaw = (enabled) => sw.evaluate(async (on) => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...settings, enabled: on, standby: false, dwell: false } });
+    }, enabled);
+    const flag = async () => (await sw.evaluate(() => chrome.storage.local.get('needsRecenter'))).needsRecenter;
+    await setRaw(false);
+    await page.waitForTimeout(300);
+    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
+    await setRaw(true);
+    await until(flag, 'recenter required', 5000);
+    // The real tracker reopens after turning on, and its frames must not mix with these.
+    await until(() => sw.evaluate(() => chrome.offscreen.hasDocument()), 'tracker reopened', 15000);
+    await sw.evaluate(() => chrome.offscreen.closeDocument());
+    // Real frames may already have started the recenter on a photo. Let that finish, then
+    // require it again so this test controls every frame.
+    await page.waitForTimeout(3000);
+    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
+    await sw.evaluate(() => chrome.storage.local.set({ needsRecenter: true }));
+    await page.waitForTimeout(100);
+
+    const dot = () => page.evaluate(() => getComputedStyle(document.getElementById('__nungil-host').shadowRoot.querySelector('.recenter')).display);
+    const size = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+    const before = await clicks();
+    await lookAt('#b', 300);
+    assert.strictEqual(await dot(), 'block', 'dot appears by itself');
+    assert.strictEqual((await boxStyle()).display, 'none', 'nothing highlights yet');
+    await say({ name: 'click' });
+    await page.waitForTimeout(150);
+    assert.deepStrictEqual(await clicks(), before, 'nothing can be pressed');
+
+    const end = Date.now() + 2300;
+    while (Date.now() < end) {
+      await sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, [0, 0, 0, 0, size.w / 2 + offset.x + 40, size.h / 2 + offset.y, -40]]);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    await until(async () => !(await flag()), 'requirement cleared', 3000);
+    assert.strictEqual(await dot(), 'none');
+    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
+    await page.waitForTimeout(100);
+    await lookAt('#b', 900);
+    assert.strictEqual((await boxStyle()).display, 'block', 'gaze works again');
+    await sw.evaluate(() => restart());
+  });
+
+  await check('"눈길 꺼줘" turns the camera off but keeps listening, "눈길 켜줘" turns it back on', async () => {
+    await setSettings({ enabled: true, standby: false });
+    await until(() => sw.evaluate(() => chrome.offscreen.hasDocument()), 'tracker running', 15000);
+    const speaker = await context.newPage();
+    await speaker.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`);
+    const say = (name) => speaker.evaluate((n) => chrome.runtime.sendMessage({ type: 'command', command: { name: n }, transcript: '' }), name).catch(() => {});
+    const offscreenUrl = () => sw.evaluate(async () => (await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] }))[0]?.documentUrl ?? null);
+    await say('powerOff');
+    await until(async () => (await offscreenUrl())?.includes('camera=0'), 'mic only', 10000);
+    const stored = (await sw.evaluate(() => chrome.storage.local.get('settings'))).settings;
+    assert.strictEqual(stored.enabled, false);
+    assert.strictEqual(stored.standby, true);
+    await say('powerOn');
+    await until(async () => (await offscreenUrl())?.includes('camera=1'), 'camera back', 10000);
+    assert.strictEqual((await sw.evaluate(() => chrome.storage.local.get('settings'))).settings.standby, false);
+
+    // The popup's switch turns everything off, mic included.
+    await say('powerOff');
+    await until(async () => (await offscreenUrl())?.includes('camera=0'), 'standby', 10000);
+    await setSettings({ enabled: false, standby: false });
+    await until(async () => (await offscreenUrl()) === null, 'fully off', 10000);
+    await speaker.close();
+    await setSettings({ enabled: true });
+    await until(() => sw.evaluate(() => chrome.offscreen.hasDocument()), 'tracker running again', 15000);
+    await page.bringToFront();
+  });
+
   await check('leaving Chrome turns the camera off, and coming back turns it on', async () => {
     await setSettings({ enabled: true });
     await until(() => sw.evaluate(() => chrome.offscreen.hasDocument()), 'tracker running', 15000);
@@ -1077,16 +1155,48 @@ try {
     await cal.keyboard.press('ArrowRight');
     await cal.keyboard.press('ArrowLeft');
     await cal.waitForFunction(() => document.querySelector('.step.on h1').textContent.includes('설정창'));
+    // The demo plays: a pointer moves, captions change, and the mock screen reacts.
+    const toolbarHere = await cal.evaluate(() => document.querySelector('.step.on .scene')?.dataset.demo);
+    if (toolbarHere !== 'toolbar') await cal.keyboard.press('ArrowLeft');
+    await cal.waitForFunction(() => document.querySelector('.step.on .scene')?.dataset.demo === 'toolbar');
+    const pointer = () => cal.evaluate(() => document.querySelector('.step.on .vcursor')?.style.transform);
+    const start = await pointer();
+    await cal.waitForFunction(() => document.querySelector('.step.on .caption').textContent.includes('핀을'), null, { timeout: 8000 });
+    assert.notStrictEqual(await pointer(), start, 'pointer moved');
+    assert.ok(await cal.evaluate(() => document.querySelector('#d-menu').classList.contains('show')), 'menu opened by the click');
+    await cal.waitForFunction(() => document.querySelector('#d-pinned').classList.contains('shown'), null, { timeout: 8000 });
+
+    // Leaving the step stops its demo; coming back starts it over.
+    await cal.keyboard.press('ArrowRight');
+    await cal.waitForFunction(() => document.querySelector('.step.on .scene')?.dataset.demo === 'settings');
+    await cal.waitForFunction(() => document.querySelector('.step.on .caption').textContent.includes('켜기'), null, { timeout: 4000 });
+    assert.strictEqual(await cal.evaluate(() => document.querySelector('[data-demo=toolbar] .vcursor')), null, 'old demo cleaned up');
+    await cal.keyboard.press('ArrowLeft');
+    await cal.waitForFunction(() => document.querySelector('.step.on .scene')?.dataset.demo === 'toolbar');
+    await cal.keyboard.press('ArrowRight');
+
     const titles = await cal.evaluate(() => [...document.querySelectorAll('.step h1')].map((h) => h.textContent));
     for (const want of ['여기 있어요', '설정창', '바라보면', '까딱', '어긋나면', '말로', 'AI']) assert.ok(titles.some((t) => t.includes(want)), want);
+
+    // Every demo runs through to its last caption without an error.
+    const demoErrors = [];
+    cal.on('pageerror', (e) => demoErrors.push(e.message));
+    const scenes = await cal.evaluate(() => [...document.querySelectorAll('.step')].map((s) => s.querySelector('.scene')?.dataset.demo ?? null));
+    const lastWords = { toolbar: '설정창이 열려요', settings: '시선 교정:', dwell: '말로 확인해야', flick: '직접 해 보세요', recenter: '다시 맞았어요', voice: '도움말', ai: '먼저 물어봐요' };
+    let at = await cal.evaluate(() => [...document.querySelectorAll('.step')].findIndex((s) => s.classList.contains('on')));
+    for (const [i, name] of scenes.entries()) {
+      if (!name) continue;
+      while (at !== i) { await cal.keyboard.press(at < i ? 'ArrowRight' : 'ArrowLeft'); at += at < i ? 1 : -1; }
+      await cal.waitForFunction((w) => document.querySelector('.step.on .caption').textContent.includes(w), lastWords[name], { timeout: 45000 });
+    }
+    assert.deepStrictEqual(demoErrors, []);
 
     // Flick practice lights the matching tile. The real tracker has to stop first:
     // its frames, from a still photo, would be mixed in with these.
     await setSettings({ enabled: false });
     await cal.waitForTimeout(500);
     const practice = titles.findIndex((t) => t.includes('까딱'));
-    const here = await cal.evaluate(() => [...document.querySelectorAll('.step')].findIndex((s) => s.classList.contains('on')));
-    for (let i = here; i < practice; i++) await cal.click('#next');
+    while (at !== practice) { await cal.keyboard.press(at < practice ? 'ArrowRight' : 'ArrowLeft'); at += at < practice ? 1 : -1; }
     const frame = (yaw) => sw.evaluate((y) => chrome.runtime.sendMessage({ type: 'frame', face: true, blink: false, features: [0, 0, y, 0, 0, 0, -40, 0, 0] }).catch(() => {}), yaw);
     for (const k of [0, 0, 0, 0, 0, 0, 0.6, 1, 1, 0.5, 0, 0, 0]) {
       await frame(0.14 * k);
@@ -1095,7 +1205,7 @@ try {
     assert.ok((await cal.textContent('#practiceText')).includes('까딱했어요'), await cal.textContent('#practiceText'));
 
     for (let i = practice; i < titles.length - 1; i++) await cal.click('#next');
-    assert.strictEqual(await cal.textContent('#next'), '시작하기');
+    assert.strictEqual(await cal.textContent('#nextLabel'), '시작하기');
     await cal.click('#next').catch(() => {});
     await until(() => sw.evaluate(async () => (await chrome.storage.local.get('onboardingDone')).onboardingDone === true), 'finished');
   });

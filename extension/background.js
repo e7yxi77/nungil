@@ -24,9 +24,10 @@ async function closeTracker() {
 
 async function openTracker() {
   if (await chrome.offscreen.hasDocument()) return;
-  const { sound } = await getSettings();
+  const { sound, enabled } = await getSettings();
   await chrome.offscreen.createDocument({
-    url: `${OFFSCREEN_URL}?sound=${sound ? 1 : 0}`,
+    // On standby only the mic runs, and speech must, to hear "눈길 켜줘".
+    url: `${OFFSCREEN_URL}?sound=${sound && enabled ? 1 : 0}&camera=${enabled ? 1 : 0}`,
     reasons: ['USER_MEDIA'],
     justification: 'Camera for on-device gaze tracking and microphone for voice commands.',
   });
@@ -35,8 +36,8 @@ async function openTracker() {
 const isAsleep = async () => (await chrome.storage.session.get('asleep')).asleep === true;
 
 const sync = () => serial(async () => {
-  const { enabled } = await getSettings();
-  await (enabled && !(await isAsleep()) ? openTracker() : closeTracker());
+  const { enabled, standby } = await getSettings();
+  await ((enabled || standby) && !(await isAsleep()) ? openTracker() : closeTracker());
 });
 
 // Leaving Chrome turns the camera and mic off completely; coming back turns them on.
@@ -71,8 +72,8 @@ chrome.windows.onFocusChanged.addListener(onWindowFocus);
 
 const restart = () => serial(async () => {
   await closeTracker();
-  const { enabled } = await getSettings();
-  if (enabled && !(await isAsleep())) await openTracker();
+  const { enabled, standby } = await getSettings();
+  if ((enabled || standby) && !(await isAsleep())) await openTracker();
 });
 
 const CONTENT_FILES = ['lib/strings.js', 'lib/gaze-model.js', 'content.js'];
@@ -360,6 +361,15 @@ async function runAgent(goal, tabId) {
   }
 }
 
+// By voice, off still leaves the mic listening for "눈길 켜줘"; the popup's switch is
+// the way to turn everything off.
+async function setPower(on) {
+  const settings = await getSettings();
+  if (settings.enabled === on && settings.standby === !on) return;
+  await chrome.storage.local.set({ settings: { ...settings, enabled: on, standby: !on } });
+  toActiveTab({ type: 'notice', key: on ? 'poweredOn' : 'poweredOff' });
+}
+
 const fromExtensionPage = (sender) => sender.url?.startsWith(chrome.runtime.getURL(''));
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -392,6 +402,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       toActiveTab(msg);
       break;
     case 'command':
+      if (msg.command?.name === 'powerOn' || msg.command?.name === 'powerOff') {
+        setPower(msg.command.name === 'powerOn');
+        break;
+      }
       diag.commands[msg.command?.name] = (diag.commands[msg.command?.name] ?? 0) + 1;
       toActiveTab(msg);
       break;
@@ -441,8 +455,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.settings) return;
   const before = changes.settings.oldValue ?? {};
   const after = changes.settings.newValue ?? {};
-  if (Boolean(before.sound) !== Boolean(after.sound)) restart();
-  else if (before.enabled !== after.enabled) sync();
+  // Posture may have changed while it was off, so the gaze has to be realigned.
+  if (!before.enabled && after.enabled) chrome.storage.local.set({ needsRecenter: true });
+  const changed = (key) => Boolean(before[key]) !== Boolean(after[key]);
+  if (changed('sound') || changed('enabled') || changed('standby')) restart();
 });
 
 chrome.runtime.onStartup.addListener(sync);
@@ -460,6 +476,8 @@ chrome.runtime.onInstalled.addListener(async ({ previousVersion, reason }) => {
     await chrome.storage.local.remove(['gazeBias', 'model']);
     chrome.tabs.create({ url: 'calibrate.html' });
   }
+  // Before 0.15.0 every click nudged this offset, walking the gaze off to one side.
+  if (/^0\.([1-9]|1[0-4])\./.test(previousVersion ?? '')) await chrome.storage.local.remove('gazeBias');
   sync();
   const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
   for (const tab of tabs) {

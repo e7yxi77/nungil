@@ -4,8 +4,8 @@
   // Fixed scales, not per-session std: dividing by a value that barely moved during
   // calibration would make the model explode the moment it does move.
   const SCALE = [5, 5, 2, 1.5, 15, 15]; // head ray x, y (cm); eye offset x, y (cm); eye-look signal x, y
-  // The cursor follows the eyes only; the head is for flicks. Each screen axis also
-  // sees just its own eye signals, since with few dots a free fit invents links.
+  // Fitted on the eyes only, with the head still; createHeadAssist adds the head. Each
+  // screen axis sees just its own eye signals, since with few dots a free fit invents links.
   const X_TERMS = [0, 3, 5, 8]; // intercept, eye x, eye x squared, look x
   const Y_TERMS = [0, 4, 6, 9]; // intercept, eye y, eye y squared, look y
   const LOOK = {
@@ -167,7 +167,7 @@
   }
 
   // One Euro filter: steady when gaze rests, responsive when it jumps.
-  function createFilter({ minCutoff = 0.3, beta = 0.008, dCutoff = 1 } = {}) {
+  function createFilter({ minCutoff = 0.5, beta = 0.012, dCutoff = 1 } = {}) {
     const alpha = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
     let last = null;
     return (x, y, t) => {
@@ -220,7 +220,7 @@
   // turn that stays, is the user looking somewhere. Fires on the way back, so the
   // whole motion has been seen before deciding. Axis values are in units of threshold.
   function createHeadFlick({
-    yawThreshold = 0.06, pitchThreshold = 0.045, riseMs = 260, returnMs = 600,
+    yawThreshold = 0.05, pitchThreshold = 0.035, riseMs = 320, returnMs = 700,
     cooldownMs = 800, dominance = 1.8, baselineTauMs = 700, deadZone = 0.35, gapMs = 500,
   } = {}) {
     let base = null, phase = 'idle', startAt = 0, peakAt = 0, peak = null;
@@ -273,7 +273,32 @@
           phase = 'idle';
         }
       }
-      return { flick, moving: phase !== 'idle' };
+      // Only a real swing counts as moving: a resting head sways enough to enter 'rise'
+      // all the time, and pausing gaze for that would leave it off most of the time.
+      return { flick, moving: phase === 'peak' };
+    };
+  }
+
+  // Head assist: where you look is where the eyes point plus where the head points, so
+  // this adds the head's part to the eye model. It keeps the point steady when the body
+  // shifts or the head turns while the eyes hold on something (they counter-rotate), and
+  // lets a small head turn fine-tune the point. The scale comes from the eye weights, as
+  // an eye rotates its iris about 0.4 of an eye width per radian. It's frozen during a
+  // quick swing of the head. A model with no eye weights gets no assist.
+  function createHeadAssist(model, { tauMs = 250, maxPx = 450, irisPerRadian = 0.4 } = {}) {
+    const pxPerCm = (Math.abs(model.wx[3] ?? 0) / SCALE[2]) * irisPerRadian;
+    let smooth = null, last = 0;
+    const clamp = (v) => Math.max(-maxPx, Math.min(maxPx, v));
+    return (raw, t, moving) => {
+      const [hx, hy] = geometry(raw);
+      if (!smooth) smooth = { hx, hy };
+      else if (!moving) {
+        const a = 1 - Math.exp(-Math.max(t - last, 0) / tauMs);
+        smooth = { hx: smooth.hx + (hx - smooth.hx) * a, hy: smooth.hy + (hy - smooth.hy) * a };
+      }
+      last = t;
+      // The camera faces the user: screen x and y run opposite to camera x and y.
+      return { x: clamp(-pxPerCm * (smooth.hx - model.mean[0])), y: clamp(-pxPerCm * (smooth.hy - model.mean[1])) };
     };
   }
 
@@ -304,5 +329,5 @@
   const errorX = (model, s) => Math.abs(predict(model, s.f).x - s.x);
   const errorY = (model, s) => Math.abs(predict(model, s.f).y - s.y);
 
-  globalThis.GazeModel = { errorX, errorY, extractFeatures, fit, predict, crossValidate, createFilter, pickTarget, createHoldGesture, createHeadFlick, flickDirection, neighbourIn };
+  globalThis.GazeModel = { errorX, errorY, extractFeatures, fit, predict, crossValidate, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn };
 })();
