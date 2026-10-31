@@ -725,10 +725,19 @@
     }
 
     function pressFound(found, click) {
-      if (click && found.length === 1 && !isRisky(found[0])) { goAndPress(found[0]); return; }
+      // Asked to press means press: matches come best first, so take the first. Only a
+      // risky one stops to ask, and then it's the only one offered.
+      if (click) {
+        const best = found[0];
+        if (!isRisky(best)) { goAndPress(best); return; }
+        best.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+        drawBadges([best]);
+        toast(t.riskyNumber, 6000);
+        return;
+      }
       found[0].scrollIntoView({ block: 'nearest', behavior: 'instant' });
       drawBadges(found);
-      toast(found.length === 1 && isRisky(found[0]) ? t.riskyNumber : t.numbersHint, 6000);
+      toast(t.numbersHint, 6000);
     }
 
     function requestFind({ query, click, text }) {

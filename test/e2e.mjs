@@ -622,19 +622,20 @@ try {
     await sw.evaluate(() => globalThis.__restoreFetch());
   });
 
-  await check('several matches, or "find", label items without pressing', async () => {
+  await check('several matches: pressing takes the best one, and "find" only labels them', async () => {
     await replyPicking(['A 버튼', 'B 버튼']);
     const before = await clicks();
     await say({ name: 'find', query: '둘 중 하나', click: true });
-    await until(async () => (await badges()) === 2, 'two badges');
-    assert.deepStrictEqual(await clicks(), before);
-    await say({ name: 'hide' });
+    await until(async () => (await clicks()).a === before.a + 1, 'best match pressed');
+    assert.strictEqual((await clicks()).b, before.b, 'only the best');
     await sw.evaluate(() => globalThis.__restoreFetch());
+    await page.waitForTimeout(600);
 
-    await replyPicking(['B 버튼']);
+    await replyPicking(['A 버튼', 'B 버튼']);
+    const held = await clicks();
     await say({ name: 'find', query: '두 번째', click: false });
-    await until(async () => (await badges()) === 1, 'one badge');
-    assert.deepStrictEqual(await clicks(), before);
+    await until(async () => (await badges()) === 2, 'two badges');
+    assert.deepStrictEqual(await clicks(), held);
     await say({ name: 'hide' });
     await sw.evaluate(() => globalThis.__restoreFetch());
   });
