@@ -1,0 +1,5 @@
+node_modules/
+.DS_Store
+# Built from extension/ for the landing page's download button.
+landing/nungil-extension.zip
+.axhub/

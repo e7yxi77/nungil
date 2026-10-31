@@ -1,0 +1,14 @@
+{
+  "name": "nungil",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/unit.test.cjs",
+    "e2e": "node test/upgrade.mjs && node test/e2e.mjs"
+  },
+  "devDependencies": {
+    "@mediapipe/tasks-vision": "1.2.0",
+    "playwright": "^1.50.0"
+  }
+}

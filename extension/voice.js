@@ -1,0 +1,58 @@
+// Continuous speech recognition. Loaded by the offscreen document, and by
+// voice.html when offscreen recognition is refused.
+(() => {
+  const params = new URLSearchParams(location.search);
+  const lang = params.get('lang') || 'ko-KR';
+  if (params.get('sound') === '1') return; // sound control replaces speech
+  const Recognition = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
+  const FATAL = new Set(['not-allowed', 'service-not-allowed', 'language-not-supported']);
+  const IGNORED = new Set(['no-speech', 'aborted']);
+  let stopped = false;
+  let retryMs = 300;
+
+  const send = (msg) => chrome.runtime.sendMessage(msg).catch(() => {});
+
+  if (!Recognition) {
+    send({ type: 'voice-error', error: 'unsupported' });
+    return;
+  }
+
+  function start() {
+    const rec = new Recognition();
+    rec.lang = lang;
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.maxAlternatives = 3;
+
+    rec.onstart = () => {
+      retryMs = 300;
+      send({ type: 'status', patch: { voice: 'listening' } });
+    };
+
+    rec.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (!event.results[i].isFinal) continue;
+        const alternatives = [...event.results[i]].map((a) => a.transcript);
+        const hit = alternatives.map((t) => [t, Commands.parseCommand(t)]).find(([, c]) => c);
+        if (hit) send({ type: 'command', command: hit[1], transcript: hit[0].trim() });
+        else send({ type: 'transcript', transcript: alternatives[0].trim() });
+      }
+    };
+
+    rec.onerror = (event) => {
+      if (IGNORED.has(event.error)) return;
+      send({ type: 'voice-error', error: event.error });
+      if (FATAL.has(event.error)) stopped = true;
+      else retryMs = Math.min(retryMs * 2, 10000);
+    };
+
+    // Chrome ends "continuous" sessions after silence, so keep restarting.
+    rec.onend = () => {
+      if (!stopped) setTimeout(start, retryMs);
+    };
+
+    rec.start();
+  }
+
+  start();
+})();

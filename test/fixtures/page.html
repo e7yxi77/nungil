@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Nungil demo page</title>
+  <style>
+    body { font: 18px system-ui, sans-serif; margin: 0; padding: 40px; height: 3000px; }
+    button, input { font: inherit; padding: 16px 24px; margin: 8px; }
+    #a, #pay, #field, #b, #link { position: absolute; margin: 0; }
+    #a { left: 40px; top: 100px; } #pay { left: 500px; top: 100px; } #field { left: 900px; top: 100px; }
+    #b { left: 40px; top: 400px; } #link { left: 500px; top: 400px; }
+    #nav { position: absolute; left: 40px; top: 620px; display: flex; gap: 6px; }
+    #nav button { margin: 0; padding: 8px 10px; }
+    article { position: absolute; top: 900px; left: 40px; }
+  </style>
+</head>
+<body>
+  <h1>눈길 데모</h1>
+  <button id="a" onclick="count('a')">A 버튼</button>
+  <button id="pay" onclick="count('pay')">결제하기</button>
+  <input id="field" placeholder="입력 칸">
+  <div id="row">
+    <button id="b" onclick="count('b')">B 버튼</button>
+    <a id="link" href="#linked">링크</a>
+  </div>
+  <nav id="nav">
+    <button id="n1" onclick="navClick('n1')">홈</button>
+    <button id="n2" onclick="navClick('n2')">뉴스</button>
+    <button id="n3" onclick="navClick('n3')">쇼핑</button>
+  </nav>
+  <div id="section" tabindex="0" style="position:absolute; top:760px; left:700px; width:400px; height:100px"><button id="inner" style="margin:20px">안쪽 버튼</button></div>
+  <p id="log" style="position:absolute; top:560px; left:40px"></p>
+  <article>
+    <h2>기사 제목</h2>
+    <p>첫 번째 문단은 읽기 기능을 시험하기 위한 충분히 긴 문장입니다.</p>
+    <p>두 번째 문단도 마찬가지로 읽기 기능을 시험하기 위한 문장입니다.</p>
+  </article>
+  <script>
+    window.nav = {};
+    function navClick(id) { window.nav[id] = (window.nav[id] || 0) + 1; }
+    window.clicks = { a: 0, b: 0, pay: 0 };
+    function count(id) { window.clicks[id]++; document.getElementById('log').textContent = JSON.stringify(window.clicks); }
+  </script>
+</body>
+</html>
