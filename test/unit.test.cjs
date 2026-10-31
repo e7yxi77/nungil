@@ -213,6 +213,33 @@ test('the wake phrase still works, and marks the request as explicit', () => {
   assert.deepStrictEqual(parseCommand('헤이 눈길'), { name: 'wake' });
 });
 
+test('saying a button name with a press word finds it, in every usual form', () => {
+  for (const say of ['뉴스 클릭', '뉴스 클릭해', '뉴스 클릭해줘', '뉴스 눌러', '뉴스 눌러줘', '뉴스 누르기', '뉴스 선택', '뉴스 선택해줘', '뉴스 열어줘', '뉴스 들어가']) {
+    const c = parseCommand(say);
+    assert.strictEqual(c?.name, 'find', say);
+    assert.strictEqual(c.query, '뉴스', say);
+    assert.strictEqual(c.click, true, say);
+  }
+  assert.strictEqual(parseCommand('클릭').name, 'click');
+  assert.deepStrictEqual(parseCommand('5번 클릭'), { name: 'number', n: 5 });
+  assert.strictEqual(parseCommand('빠른 교정').name, 'quickCalibrate');
+});
+
+test('four dots recover offset and scale, and an impossible fit is refused', () => {
+  const { fitCorrection, applyCorrection } = globalThis.GazeModel;
+  const dots = [[300, 200], [1200, 200], [1200, 700], [300, 700]];
+  const drifted = dots.map(([x, y]) => ({ x, y, seenX: (x - 750) * 0.7 + 750 - 120, seenY: (y - 450) * 1.3 + 450 + 80 }));
+  const fix = fitCorrection(drifted);
+  for (const d of drifted) {
+    const p = applyCorrection(fix, { x: d.seenX, y: d.seenY });
+    assert.ok(Math.hypot(p.x - d.x, p.y - d.y) < 1, JSON.stringify(p));
+  }
+  assert.strictEqual(fitCorrection(dots.map(([x, y]) => ({ x, y, seenX: x + 2000, seenY: y }))), null, 'too far');
+  assert.strictEqual(fitCorrection(dots.map(([x, y]) => ({ x, y, seenX: (x - 750) * 0.1 + 750, seenY: y }))), null, 'almost no spread');
+  const plain = applyCorrection({ x: 10, y: -5 }, { x: 100, y: 100 });
+  assert.deepStrictEqual(plain, { x: 110, y: 95 }, 'an offset alone still works');
+});
+
 test('anything that is not a command goes to the AI without the wake phrase', () => {
   assert.deepStrictEqual(parseCommand('지메일 들어가서 메일 작성해줘'), { name: 'agent', goal: '지메일 들어가서 메일 작성해줘', wake: false });
   assert.deepStrictEqual(parseCommand('오늘 날씨 알려줘.'), { name: 'agent', goal: '오늘 날씨 알려줘', wake: false });

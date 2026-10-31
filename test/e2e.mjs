@@ -602,7 +602,7 @@ try {
   await check('"B 버튼 눌러줘" finds and clicks the item, and sends labels but no typed text', async () => {
     await replyPicking(['B 버튼']);
     const before = await clicks();
-    await say({ name: 'find', query: 'B 버튼', click: true });
+    await say({ name: 'find', query: '두 번째로 큰 것', click: true });
     await until(async () => (await clicks()).b === before.b + 1, 'B clicked by AI');
     const body = (await aiRequest()).body;
     assert.ok(body.includes('A 버튼'), 'labels sent');
@@ -625,14 +625,14 @@ try {
   await check('several matches, or "find", label items without pressing', async () => {
     await replyPicking(['A 버튼', 'B 버튼']);
     const before = await clicks();
-    await say({ name: 'find', query: '버튼', click: true });
+    await say({ name: 'find', query: '둘 중 하나', click: true });
     await until(async () => (await badges()) === 2, 'two badges');
     assert.deepStrictEqual(await clicks(), before);
     await say({ name: 'hide' });
     await sw.evaluate(() => globalThis.__restoreFetch());
 
     await replyPicking(['B 버튼']);
-    await say({ name: 'find', query: 'B', click: false });
+    await say({ name: 'find', query: '두 번째', click: false });
     await until(async () => (await badges()) === 1, 'one badge');
     assert.deepStrictEqual(await clicks(), before);
     await say({ name: 'hide' });
@@ -738,7 +738,7 @@ try {
     await sw.evaluate(() => { globalThis.fetch = globalThis.__agentReal; });
 
     await sw.evaluate(() => { globalThis.__agentSteps = 0; });
-    await scriptAgent([]);
+    await scriptAgent(Array.from({ length: 14 }, (_, i) => ({ action: 'click', label: i % 2 ? 'A 버튼' : 'B 버튼', say: '눌러요' })));
     await say({ name: 'agent', goal: '끝없는 일 해줘' }, 'x');
     await until(async () => (await toastText()).includes('단계가 너무 많아서'), 'step limit', 40000);
     assert.strictEqual(await sw.evaluate(() => globalThis.__agentBodies.length), 12);
@@ -787,6 +787,61 @@ try {
     await page.goto(pageUrl);
     await page.bringToFront();
     await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
+    await page.waitForTimeout(300);
+  });
+
+  await check('saying a button name presses it directly, with no AI call', async () => {
+    await page.goto(pageUrl);
+    await page.bringToFront();
+    await page.waitForTimeout(300);
+    await sw.evaluate(() => { globalThis.__agentBodies = []; });
+    await say({ name: 'find', query: '뉴스 버튼', text: '뉴스 버튼 눌러줘', click: true }, 'x');
+    await until(() => page.evaluate(() => window.nav.n2 === 1), 'pressed by name', 4000);
+    assert.strictEqual((await sw.evaluate(() => globalThis.__agentBodies)).length, 0, 'AI never called');
+  });
+
+  await check('a named button off screen is scrolled to and pressed', async () => {
+    await page.evaluate(() => {
+      const b = document.createElement('button');
+      b.textContent = '저 아래 버튼';
+      b.onclick = () => { window.farClicked = (window.farClicked || 0) + 1; };
+      b.style.cssText = 'position:absolute;top:2600px;left:40px';
+      document.body.appendChild(b);
+      scrollTo({ top: 0, behavior: 'instant' });
+    });
+    await say({ name: 'find', query: '저 아래', text: '저 아래 눌러줘', click: true }, 'x');
+    await until(() => page.evaluate(() => window.farClicked === 1), 'pressed after scrolling', 4000);
+    assert.ok(await page.evaluate(() => scrollY > 1000), 'went to it');
+    await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
+  });
+
+  await check('a button under an overlay is still found, and "display" is not a risky word', async () => {
+    await page.evaluate(() => {
+      const cover = document.createElement('div');
+      cover.id = 'cover';
+      cover.style.cssText = 'position:fixed;inset:0;z-index:50;background:transparent';
+      document.body.appendChild(cover);
+      const d = document.createElement('button');
+      d.textContent = 'display settings';
+      d.onclick = () => { window.dispClicked = 1; };
+      d.style.cssText = 'position:absolute;top:180px;left:40px';
+      document.body.appendChild(d);
+    });
+    await say({ name: 'find', query: 'display settings', text: 'x', click: true }, 'x');
+    await until(() => page.evaluate(() => window.dispClicked === 1), 'pressed', 4000);
+    await page.evaluate(() => document.getElementById('cover').remove());
+  });
+
+  await check('AI task: repeating the same move stops early instead of using all 12 steps', async () => {
+    await page.goto(pageUrl);
+    await page.bringToFront();
+    await page.waitForTimeout(300);
+    await scriptAgent(Array(12).fill({ action: 'click', label: 'B 버튼', say: '눌러요' }));
+    await say({ name: 'agent', goal: '반복해줘', wake: true }, 'x');
+    await until(async () => (await toastText()).includes('반복돼서'), 'stopped', 15000);
+    assert.ok((await sw.evaluate(() => globalThis.__agentBodies.length)) <= 4);
+    await page.goto(pageUrl);
+    await page.bringToFront();
     await page.waitForTimeout(300);
   });
 
@@ -1048,6 +1103,47 @@ try {
     await page.waitForTimeout(100);
   });
 
+  await check('quick calibration: four dots fix offset and scale, and the model is untouched', async () => {
+    await sw.evaluate(() => chrome.offscreen.hasDocument().then((open) => open && chrome.offscreen.closeDocument()));
+    await sw.evaluate(() => chrome.storage.local.remove(['needsRecenter', 'gazeBias']));
+    await page.waitForTimeout(600);
+    const modelBefore = await sw.evaluate(async () => JSON.stringify((await chrome.storage.local.get('model')).model));
+    await say({ name: 'quickCalibrate' });
+    const size = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+    for (const [fx, fy] of [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]) {
+      const end = Date.now() + 2000;
+      const tx = size.w * fx + offset.x, ty = size.h * fy + offset.y;
+      while (Date.now() < end) {
+        // A user whose gaze reads 80% of the true spread, shifted 60px.
+        await sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, [0, 0, 0, 0, tx * 0.8 + 60, ty * 0.8 + 60, -40]]);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    }
+    const fix = await until(async () => (await sw.evaluate(() => chrome.storage.local.get('gazeBias'))).gazeBias, 'correction saved', 3000);
+    assert.ok(Math.abs(fix.sx - 1.25) < 0.1 && Math.abs(fix.sy - 1.25) < 0.1, JSON.stringify(fix));
+    assert.strictEqual(await sw.evaluate(async () => JSON.stringify((await chrome.storage.local.get('model')).model)), modelBefore);
+    await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
+    await sw.evaluate(() => restart());
+    await page.waitForTimeout(100);
+  });
+
+  await check('coming back to Chrome: a quick switch nudges, a long absence runs four dots', async () => {
+    const needs = async () => (await sw.evaluate(() => chrome.storage.local.get('needsRecenter'))).needsRecenter;
+    await sw.evaluate(async () => {
+      await chrome.storage.session.set({ asleep: true, sleptAt: Date.now() - 5000 });
+      await onWindowFocus(1);
+    });
+    assert.strictEqual(await needs(), true);
+    await sw.evaluate(async () => {
+      await chrome.storage.local.remove('needsRecenter');
+      await chrome.storage.session.set({ asleep: true, sleptAt: Date.now() - 120000 });
+      await onWindowFocus(1);
+    });
+    assert.strictEqual(await needs(), 'quick');
+    await sw.evaluate(() => chrome.storage.local.remove(['needsRecenter', 'gazeBias']));
+    await page.waitForTimeout(200);
+  });
+
   await check('turning back on requires a recenter: no gaze clicks until it is done', async () => {
     await page.bringToFront();
     const setRaw = (enabled) => sw.evaluate(async (on) => {
@@ -1059,7 +1155,7 @@ try {
     await page.waitForTimeout(300);
     await sw.evaluate(() => chrome.storage.local.remove('gazeBias'));
     await setRaw(true);
-    await until(flag, 'recenter required', 5000);
+    assert.strictEqual(await until(flag, 'recenter required', 5000), 'quick', 'turning on asks for four dots');
     try {
     // The real tracker reopens after turning on, and its frames must not mix with these.
     await until(() => sw.evaluate(() => chrome.offscreen.hasDocument()), 'tracker reopened', 15000);

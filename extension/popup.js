@@ -75,11 +75,13 @@ $('codex').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: signedIn ? 'codex-logout' : 'codex-login' }).catch(() => {});
 });
 $('guide').addEventListener('click', () => chrome.tabs.create({ url: 'guide.html' }));
-$('recenter').addEventListener('click', async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: 'command', command: { name: 'recenter' }, transcript: '' }).catch(() => {});
-  window.close();
-});
+for (const [id, name] of [['recenter', 'recenter'], ['quick', 'quickCalibrate']]) {
+  $(id).addEventListener('click', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: 'command', command: { name }, transcript: '' }).catch(() => {});
+    window.close();
+  });
+}
 $('calibrate').addEventListener('click', () => chrome.tabs.create({ url: 'calibrate.html' }));
 
 chrome.storage.onChanged.addListener(render);

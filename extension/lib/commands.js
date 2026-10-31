@@ -18,6 +18,7 @@
     powerOn: ['눈길켜줘', '눈길켜', '눈길켜기', '눈길켜주세요', '눈길시작', '눈낄켜줘'],
     powerOff: ['눈길꺼줘', '눈길꺼', '눈길끄기', '눈길꺼주세요', '눈길종료', '눈낄꺼줘'],
     next: ['다음', '다음으로', '넘어가', '시작하기', 'next'],
+    quickCalibrate: ['빠른교정', '빠른보정', '4점교정', '네점교정', '다시맞춤'],
     recenter: ['교정', '시선교정', '시선맞춤', '시선맞추기', '재교정', '영점', 'recenter', 'realign'],
     pause: ['멈춰', '정지', '일시정지', 'pause', 'stop'],
     resume: ['다시시작', '시작', '재개', 'resume', 'start'],
@@ -48,7 +49,7 @@
   }
 
   // Requests ending in an action verb, which name something on screen.
-  const FIND_KO = /^(.+?)\s*(눌러\s*줘|눌러\s*주세요|눌러|클릭\s*해\s*줘|클릭\s*해\s*주세요|클릭\s*해|열어\s*줘|열어\s*주세요|열어|찾아\s*줘|찾아\s*주세요|찾아)$/;
+  const FIND_KO = /^(.+?)\s*(눌러\s*줘|눌러\s*주세요|눌러|누르기|클릭\s*해\s*줘|클릭\s*해\s*주세요|클릭\s*해|클릭|선택\s*해\s*줘|선택\s*해\s*주세요|선택\s*해|선택|열어\s*줘|열어\s*주세요|열어|들어가\s*줘|들어가|찾아\s*줘|찾아\s*주세요|찾아)$/;
   const FIND_EN = /^(click|press|open|find)\s+(?:on\s+)?(.+)$/i;
   const DEMONSTRATIVES = new Set(['이거', '저거', '그거', '이것', '저것', '그것', '여기', 'this', 'that', 'it']);
 

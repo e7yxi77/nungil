@@ -44,6 +44,7 @@ const sync = () => serial(async () => {
 // Focus also drops for a moment when switching windows, and may while a settings
 // popup or permission prompt is open, so it's only sleep if that's still true later.
 const SLEEP_AFTER_MS = 3000;
+const LONG_SLEEP_MS = 60_000;
 let sleepTimer = 0;
 
 async function chromeHasFocus() {
@@ -56,14 +57,18 @@ async function onWindowFocus(windowId) {
   clearTimeout(sleepTimer);
   if (windowId !== chrome.windows.WINDOW_ID_NONE) {
     if (await isAsleep()) {
-      await chrome.storage.session.remove('asleep');
+      const { sleptAt = 0 } = await chrome.storage.session.get('sleptAt');
+      await chrome.storage.session.remove(['asleep', 'sleptAt']);
+      // Back after a while means a new posture; back from a quick switch just needs a nudge.
+      const quick = Date.now() - sleptAt > LONG_SLEEP_MS;
+      await chrome.storage.local.set({ needsRecenter: quick ? 'quick' : true });
       sync();
     }
     return;
   }
   sleepTimer = setTimeout(async () => {
     if (await chromeHasFocus()) return;
-    await chrome.storage.session.set({ asleep: true });
+    await chrome.storage.session.set({ asleep: true, sleptAt: Date.now() });
     sync();
   }, SLEEP_AFTER_MS);
 }
@@ -260,6 +265,7 @@ async function runAi({ id, task, text, count }, tabId) {
 
 // ---- AI task runner ----------------------------------------------------------
 const AGENT_MAX_STEPS = 12;
+const AGENT_MAX_REPEATS = 2;
 const AGENT_STEP_PAUSE_MS = 800;
 const AGENT_LOAD_TIMEOUT_MS = 15000;
 const AGENT_SNAPSHOT_TRIES = 10;
@@ -275,6 +281,7 @@ const AGENT_INSTRUCTIONS = `당신은 음성으로만 웹을 쓰는 장애인 �
 - say는 사용자에게 보여 줄 짧은 한국어 문장입니다.
 - 항목 번호는 현재 화면 목록에 있는 것만 쓰세요. 원하는 항목이 없으면 scroll이나 navigate를 쓰세요.
 - 사이트 주소를 알면 navigate로 바로 가세요. 예: Gmail은 https://mail.google.com
+- 목표를 이룬 것이 화면에서 확인되면, 또는 한 번 누르면 되는 일이면 누른 다음 바로 done으로 끝내세요. 같은 동작을 되풀이하지 마세요.
 - 로그인이 필요하면 ask로 사용자에게 맡기세요. 비밀번호와 결제 정보는 절대 입력하지 마세요.
 - 메일 작성처럼 초안까지가 목표면 내용을 채운 뒤 done으로 끝내고, 사용자가 말하지 않은 전송·결제·삭제는 하지 마세요.
 - 내용을 지어내야 하는데 사용자가 말해 주지 않았으면, 빈칸으로 두고 done에서 무엇을 말해 달라고 알리세요.
@@ -324,10 +331,12 @@ async function runAgent(goal, tabId, quiet) {
   const tell = (patch) => chrome.tabs.sendMessage(tabId, { type: 'agent-status', ...patch }).catch(() => {});
   const finish = (patch) => {
     if (agentRun === run) agentRun = null;
-    diag.lastAgent = { steps: history.length, end: patch.key ?? 'message' };
+    diag.lastAgent = { steps: history.length, end: patch.key ?? 'message', actions };
     return tell({ running: false, ...patch });
   };
   const history = [];
+  const actions = [];
+  let lastSignature = '', repeats = 0;
   await tell({ running: true, key: 'agentStart' });
   try {
     for (let step = 0; step < AGENT_MAX_STEPS; step++) {
@@ -338,7 +347,13 @@ async function runAgent(goal, tabId, quiet) {
       if (run.cancelled) return;
       const action = Codex.parseAgentAction(reply, snapshot.items.length);
       if (!action) return await finish({ key: 'agentBadReply' });
+      // The same move on the same screen again and again won't start working on try three.
+      const signature = JSON.stringify([action.action, action.index, action.url, action.text, snapshot.url, snapshot.items.length, snapshot.scrollY]);
+      repeats = signature === lastSignature ? repeats + 1 : 0;
+      lastSignature = signature;
+      actions.push(action.action);
       if (action.action === 'done' || action.action === 'ask') return await finish({ text: action.say });
+      if (repeats >= AGENT_MAX_REPEATS) return await finish({ key: 'agentStuck' });
       if (action.say) await tell({ running: true, text: action.say });
 
       if (action.action === 'navigate') {
@@ -457,7 +472,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const before = changes.settings.oldValue ?? {};
   const after = changes.settings.newValue ?? {};
   // Posture may have changed while it was off, so the gaze has to be realigned.
-  if (!before.enabled && after.enabled) chrome.storage.local.set({ needsRecenter: true });
+  if (!before.enabled && after.enabled) chrome.storage.local.set({ needsRecenter: 'quick' });
   const changed = (key) => Boolean(before[key]) !== Boolean(after[key]);
   if (changed('sound') || changed('enabled') || changed('standby')) restart();
 });

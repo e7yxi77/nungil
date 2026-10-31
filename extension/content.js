@@ -5,7 +5,7 @@
   // A newly injected copy always takes over instead.
   window.__nungilDispose?.();
   (() => {
-    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn } = GazeModel;
+    const { predict, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn, applyCorrection, fitCorrection } = GazeModel;
 
     const SNAP_MIN_PX = 150;
     const SNAP_MAX_PX = 300;
@@ -30,10 +30,13 @@
     const AI_MAX_CHARS = 30000;
     const FIND_MAX_ITEMS = 150;
     const FIND_LABEL_CHARS = 80;
+    const PRESS_AFTER_FIND_MS = 450;
+    const NAMED_MAX_CHOICES = 9;
     const RECENTER_SETTLE_MS = 900;
     const RECENTER_COLLECT_MS = 1100;
     const RECENTER_MIN_SAMPLES = 5;
     const RECENTER_RETRY_MS = 1500;
+    const QUICK_DOTS = [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]];
     const FACE_GONE_MS = 2000;
     const RECENTER_MAX_PX = 500;
     const NUMBERS_NEAR_GAZE = 9;
@@ -41,13 +44,14 @@
     const CLICKABLE = 'a[href],button,input:not([type=hidden]),select,textarea,summary,label[for],'
       + '[role=button],[role=link],[role=menuitem],[role=tab],[role=checkbox],[role=radio],'
       + '[onclick],[contenteditable=true],[tabindex]:not([tabindex="-1"])';
-    const RISKY = /결제|구매|주문|송금|이체|삭제|탈퇴|전송|보내기|pay|buy|purchase|checkout|order|delete|remove|send|transfer/i;
+    // Word boundaries on the English ones: "display" contains "pay", "border" contains "order".
+    const RISKY = /결제|구매|주문|송금|이체|삭제|탈퇴|전송|보내기|\b(pay|buy|purchase|checkout|order|delete|remove|send|transfer)\b/i;
 
     let settings = { ...NUNGIL_DEFAULTS };
     let eyeModel = null;
     const usable = (m) => (m?.version === NUNGIL_MODEL_VERSION ? m : null);
     const activeModel = () => usable(eyeModel);
-    let bias = { x: 0, y: 0 }; // screen px, corrects drift since calibration
+    let bias = { x: 0, y: 0 }; // corrects drift since calibration: offset, and optionally scale
     let lastScreen = null; // smoothed gaze before bias
     let recentering = null; // { samples, collecting, point }
     const t = nungilStrings();
@@ -99,7 +103,7 @@
         .box.fire { background: rgba(0, 113, 227, .35); }
         .ring { position: fixed; display: none; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .35));
           -webkit-mask: radial-gradient(farthest-side, transparent 72%, #000 74%); mask: radial-gradient(farthest-side, transparent 72%, #000 74%); }
-        .recenter { position: fixed; display: none; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #0071e3; border: 4px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12), 0 8px 24px rgba(0, 0, 0, .3); }
+        .recenter { transition: left .4s cubic-bezier(.2, .8, .2, 1), top .4s cubic-bezier(.2, .8, .2, 1); position: fixed; display: none; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #0071e3; border: 4px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12), 0 8px 24px rgba(0, 0, 0, .3); }
         .toast { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); max-width: min(80vw, 620px); padding: 13px 22px; border-radius: 22px; background: rgba(29, 29, 31, .78); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); color: #fff; font-size: 16px; line-height: 1.4; font-weight: 500; letter-spacing: -.01em; text-align: center; display: none; box-shadow: 0 10px 34px rgba(0, 0, 0, .28); animation: rise .28s cubic-bezier(.2, .8, .2, 1); }
         .badge { position: fixed; min-width: 28px; height: 28px; padding: 0 8px; border-radius: 14px; background: #0071e3; color: #fff; font-size: 15px; line-height: 28px; font-weight: 600; text-align: center; box-shadow: 0 0 0 2px #fff, 0 4px 12px rgba(0, 0, 0, .28); }
         .help { position: fixed; top: 20px; right: 20px; width: 360px; max-width: calc(100vw - 32px); padding: 20px 22px; border-radius: 20px; background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); color: #1d1d1f; display: none; box-shadow: 0 18px 50px rgba(0, 0, 0, .22); }
@@ -337,13 +341,16 @@
       if (needsRecenter) {
         if (target) setTarget(null, now);
         ui.ring.style.display = 'none';
-        if (!recentering && now >= recenterRetryAt && !document.hidden) recenter(t.recenterRequired);
+        if (!recentering && now >= recenterRetryAt && !document.hidden) {
+          if (needsRecenter === 'quick') quickCalibrate();
+          else recenter(t.recenterRequired);
+        }
         return;
       }
       // Median first: a single wild frame would otherwise jolt the highlight.
       rawWindow = [...rawWindow.slice(1 - RAW_WINDOW), raw];
       lastScreen = filter(median(rawWindow.map((p) => p.x)), median(rawWindow.map((p) => p.y)), now);
-      const v = screenToViewport({ x: lastScreen.x + bias.x, y: lastScreen.y + bias.y });
+      const v = screenToViewport(applyCorrection(bias, lastScreen));
       gaze = {
         x: Math.max(0, Math.min(innerWidth - 1, v.x)),
         y: Math.max(0, Math.min(innerHeight - 1, v.y)),
@@ -406,39 +413,78 @@
       return sorted[Math.floor(sorted.length / 2)];
     }
 
-    // One dot, two seconds: for when the user has shifted and the cursor is off.
-    function recenter(prompt = t.recenterLook) {
+    function collectAt(point, samples) {
+      return new Promise((resolve) => {
+        ui.recenter.style.cssText = `display:block;left:${point.x}px;top:${point.y}px`;
+        recentering = { samples, collecting: false };
+        setTimeout(() => { if (recentering) recentering.collecting = true; }, RECENTER_SETTLE_MS);
+        setTimeout(resolve, RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
+      });
+    }
+
+    const viewportToScreen = (p) => {
+      const origin = screenToViewport({ x: 0, y: 0 });
+      return { x: p.x - origin.x, y: p.y - origin.y };
+    };
+
+    function retryLater() {
+      recenterRetryAt = performance.now() + RECENTER_RETRY_MS;
+      toast(t.recenterFail);
+    }
+
+    // One dot, two seconds: fixes an offset, for when the user has only shifted a little.
+    async function recenter(prompt = t.recenterLook) {
       if (!activeModel()) { toast(t.calibrateFirst); return; }
       if (recentering) return;
-      const point = { x: innerWidth / 2, y: innerHeight / 2 };
       hideNumbers();
-      recentering = { samples: [], collecting: false };
-      ui.recenter.style.cssText = `display:block;left:${point.x}px;top:${point.y}px`;
       toast(prompt, RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
-      setTimeout(() => { if (recentering) recentering.collecting = true; }, RECENTER_SETTLE_MS);
-      setTimeout(() => {
-        const { samples } = recentering;
-        recentering = null;
-        ui.recenter.style.display = 'none';
+      const samples = [];
+      const point = { x: innerWidth / 2, y: innerHeight / 2 };
+      await collectAt(point, samples);
+      recentering = null;
+      ui.recenter.style.display = 'none';
+      if (samples.length < RECENTER_MIN_SAMPLES) { retryLater(); return; }
+      const target = viewportToScreen(point);
+      const seen = { x: median(samples.map((p) => p.x)), y: median(samples.map((p) => p.y)) };
+      const scaled = applyCorrection({ ...bias, x: 0, y: 0 }, seen);
+      const next = { ...bias, x: target.x - scaled.x, y: target.y - scaled.y };
+      // Either way the requirement ends: retrying forever would lock the user out.
+      chrome.storage.local.remove('needsRecenter');
+      // An offset this big means the calibration itself is wrong. Saving it would
+      // only hide that, and pin the gaze to a screen edge once anything changes.
+      if (Math.hypot(next.x, next.y) > RECENTER_MAX_PX) { toast(t.recenterTooFar, 5000); return; }
+      saveBias(next);
+      toast(t.recenterDone);
+    }
+
+    // Four dots, about six seconds: fixes offset and scale without redoing calibration,
+    // for when the user has sat down again or come back after a while.
+    async function quickCalibrate() {
+      if (!activeModel()) { toast(t.calibrateFirst); return; }
+      if (recentering) return;
+      hideNumbers();
+      const pairs = [];
+      for (const [i, [fx, fy]] of QUICK_DOTS.entries()) {
+        toast(t.quickLook(i + 1, QUICK_DOTS.length), RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
+        const point = { x: innerWidth * fx, y: innerHeight * fy };
+        const samples = [];
+        await collectAt(point, samples);
         if (samples.length < RECENTER_MIN_SAMPLES) {
-          recenterRetryAt = performance.now() + RECENTER_RETRY_MS;
-          toast(t.recenterFail);
+          recentering = null;
+          ui.recenter.style.display = 'none';
+          retryLater();
           return;
         }
-        // screenToViewport is a pure offset, so its inverse comes from a zero point.
-        const origin = screenToViewport({ x: 0, y: 0 });
-        const next = {
-          x: point.x - origin.x - median(samples.map((s) => s.x)),
-          y: point.y - origin.y - median(samples.map((s) => s.y)),
-        };
-        // An offset this big means the calibration itself is wrong. Saving it would
-        // only hide that, and pin the gaze to a screen edge once anything changes.
-        // Either way the requirement ends: retrying forever would lock the user out.
-        chrome.storage.local.remove('needsRecenter');
-        if (Math.hypot(next.x, next.y) > RECENTER_MAX_PX) { toast(t.recenterTooFar, 5000); return; }
-        saveBias(next);
-        toast(t.recenterDone);
-      }, RECENTER_SETTLE_MS + RECENTER_COLLECT_MS);
+        const target = viewportToScreen(point);
+        pairs.push({ seenX: median(samples.map((p) => p.x)), seenY: median(samples.map((p) => p.y)), x: target.x, y: target.y });
+      }
+      recentering = null;
+      ui.recenter.style.display = 'none';
+      chrome.storage.local.remove('needsRecenter');
+      const next = fitCorrection(pairs);
+      if (!next) { toast(t.recenterTooFar, 5000); return; }
+      saveBias(next);
+      toast(t.recenterDone);
     }
 
     // ---- Reader -----------------------------------------------------------
@@ -568,10 +614,64 @@
       return `[${el.tagName.toLowerCase()}] ${labelOf(el).slice(0, FIND_LABEL_CHARS)}`;
     }
 
-    function requestFind({ query, click, text }) {
+    // Everything pressable on the page, on screen or not, and whether or not something
+    // happens to sit above it. Looser than what gaze may land on, with on-screen items
+    // first: a list that misses real buttons leaves the AI with nothing to press.
+    function findPool() {
+      const seen = [];
+      for (const el of document.querySelectorAll(CLICKABLE)) {
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
+        if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 4 || r.height < 4) continue;
+        if (r.width * r.height > innerWidth * innerHeight * MAX_TARGET_VIEWPORT_SHARE) continue;
+        if (el.querySelector(CLICKABLE)) continue;
+        seen.push({ el, onScreen: r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth });
+      }
+      return [...seen.filter((c) => c.onScreen), ...seen.filter((c) => !c.onScreen)].map((c) => c.el);
+    }
+
+    const squash = (text) => text.toLowerCase().replace(/[\s"'.,!?·:()[\]]/g, '');
+    const NOUN_ENDINGS = /(버튼|링크|메뉴|항목|탭|페이지|을|를|으로|로)+$/;
+
+    // A button named out loud needs no AI: the page already says what it's called.
+    function matchByName(query, pool) {
+      const wanted = squash(query).replace(NOUN_ENDINGS, '') || squash(query);
+      const named = pool.map((el) => ({ el, label: squash(labelOf(el)) })).filter((c) => c.label);
+      const exact = named.filter((c) => c.label === wanted);
+      const hits = exact.length ? exact : named.filter((c) => c.label.includes(wanted));
+      return hits.map((c) => c.el);
+    }
+
+    // Goes to a button that may be off screen, and shows which one before pressing it.
+    function goAndPress(el) {
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
       refreshTargets();
-      if (!targets.length) { toast(t.noElements); return; }
-      const els = targets.slice(0, FIND_MAX_ITEMS).map((c) => c.el);
+      setTarget(el, performance.now());
+      holdAt = gaze && { x: gaze.x, y: gaze.y };
+      setTimeout(() => activate(el), PRESS_AFTER_FIND_MS);
+    }
+
+    function pressFound(found, click) {
+      if (click && found.length === 1 && !isRisky(found[0])) { goAndPress(found[0]); return; }
+      found[0].scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      drawBadges(found);
+      toast(found.length === 1 && isRisky(found[0]) ? t.riskyNumber : t.numbersHint, 6000);
+    }
+
+    function requestFind({ query, click, text }) {
+      const pool = findPool();
+      if (!pool.length) {
+        if (click && text && settings.agent) startAgent(text);
+        else toast(t.noElements);
+        return;
+      }
+      const named = matchByName(query, pool);
+      if (named.length === 1 || (named.length > 1 && named.length <= NAMED_MAX_CHOICES && !click)) {
+        pressFound(named, click);
+        return;
+      }
+      const els = pool.slice(0, FIND_MAX_ITEMS);
       const items = els.map((el, i) => `${i}: ${describeElement(el)}`).join('\n');
       toast(t.finding(query), 8000);
       startAi('find', `${query}\n\n${items}`, { els, query, click, text });
@@ -587,9 +687,7 @@
         else toast(t.notFound(query), 4000);
         return;
       }
-      if (click && found.length === 1 && !isRisky(found[0])) { activate(found[0]); return; }
-      drawBadges(found);
-      toast(found.length === 1 && isRisky(found[0]) ? t.riskyNumber : t.numbersHint, 6000);
+      pressFound(found, click);
     }
 
     // ---- AI task runner: the background script decides, this does and shows ----
@@ -597,8 +695,7 @@
     let agentRunning = false;
 
     function agentSnapshot() {
-      refreshTargets();
-      agentEls = targets.slice(0, FIND_MAX_ITEMS).map((c) => c.el);
+      agentEls = findPool().slice(0, FIND_MAX_ITEMS);
       const describe = (el) => {
         if (isSensitiveField(el)) return `${describeElement(el)} (비밀번호·결제 칸: 입력 금지)`;
         return isEditable(el) ? `${describeElement(el)} (입력 칸)` : describeElement(el);
@@ -607,6 +704,7 @@
         title: document.title,
         // No query string: it can hold tokens and search history the AI doesn't need.
         url: location.origin + location.pathname,
+        scrollY: Math.round(scrollY),
         items: agentEls.map((el, i) => `${i}: ${describe(el)}`),
       };
     }
@@ -627,6 +725,7 @@
           toast(t.riskyNumber, 10000);
           return { blocked: 'risky' };
         }
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
         activate(el);
         return { ok: true };
       }
@@ -832,6 +931,7 @@
         case 'summarize': requestSummary(); break;
         case 'find': requestFind(cmd); break;
         case 'recenter': recenter(); break;
+        case 'quickCalibrate': quickCalibrate(); break;
         case 'agent': startAgent(cmd.goal, cmd.wake !== false); break;
         case 'wake': toast(settings.agent ? t.wakeListening : t.agentOff, 8000); break;
         case 'pause':
@@ -892,7 +992,7 @@
     }
 
     function applyStored({ settings: s, model: m, gazeBias: b, needsRecenter: n }) {
-      if (n !== undefined) needsRecenter = Boolean(n);
+      if (n !== undefined) needsRecenter = n || false;
       if (b !== undefined) bias = b ?? { x: 0, y: 0 };
       if (s !== undefined) {
         // Start the dwell timer fresh, or switching dwell on would instantly

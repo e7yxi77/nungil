@@ -279,6 +279,29 @@
     };
   }
 
+  // A correction on top of the calibrated model: offset always, scale when four dots gave one.
+  function applyCorrection({ x = 0, y = 0, sx = 1, sy = 1, cx = 0, cy = 0 }, p) {
+    return { x: cx + sx * (p.x - cx) + x, y: cy + sy * (p.y - cy) + y };
+  }
+
+  // Straight-line fit per axis from dots looked at. Returns null if it would take an
+  // unreasonable change, since that means the calibration itself is off.
+  function fitCorrection(pairs, { minScale = 0.5, maxScale = 2, maxOffset = 600 } = {}) {
+    const axis = (seen, target) => {
+      const n = seen.length;
+      const ms = seen.reduce((a, v) => a + v, 0) / n, mt = target.reduce((a, v) => a + v, 0) / n;
+      const varS = seen.reduce((a, v) => a + (v - ms) ** 2, 0);
+      const cov = seen.reduce((a, v, i) => a + (v - ms) * (target[i] - mt), 0);
+      const scale = varS > 1 ? cov / varS : 1;
+      return { scale, center: ms, offset: mt - ms };
+    };
+    const ax = axis(pairs.map((p) => p.seenX), pairs.map((p) => p.x));
+    const ay = axis(pairs.map((p) => p.seenY), pairs.map((p) => p.y));
+    const fine = (a) => a.scale >= minScale && a.scale <= maxScale && Math.abs(a.offset) <= maxOffset;
+    if (!fine(ax) || !fine(ay)) return null;
+    return { x: ax.offset, y: ay.offset, sx: ax.scale, sy: ay.scale, cx: ax.center, cy: ay.center };
+  }
+
   // Head assist: where you look is where the eyes point plus where the head points, so
   // this adds the head's part to the eye model. It keeps the point steady when the body
   // shifts or the head turns while the eyes hold on something (they counter-rotate), and
@@ -329,5 +352,5 @@
   const errorX = (model, s) => Math.abs(predict(model, s.f).x - s.x);
   const errorY = (model, s) => Math.abs(predict(model, s.f).y - s.y);
 
-  globalThis.GazeModel = { errorX, errorY, extractFeatures, fit, predict, crossValidate, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn };
+  globalThis.GazeModel = { errorX, errorY, extractFeatures, fit, predict, crossValidate, createFilter, pickTarget, createHoldGesture, createHeadFlick, createHeadAssist, flickDirection, neighbourIn, applyCorrection, fitCorrection };
 })();
