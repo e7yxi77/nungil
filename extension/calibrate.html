@@ -4,51 +4,51 @@
   <meta charset="utf-8">
   <title>눈길 시선 교정</title>
   <style>
-    :root { --bg: #fff; --fg: #111; --muted: #555; --accent: #ffc107; --line: #ccc; }
-    @media (prefers-color-scheme: dark) { :root { --bg: #161616; --fg: #f2f2f2; --muted: #aaa; --line: #444; } }
+    :root { --bg: #f5f5f7; --fg: #1d1d1f; --muted: #6e6e73; --accent: #0071e3; --tint: rgba(0, 113, 227, .1); --bad: #d70015; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #f5f5f7; --muted: #98989d; --accent: #0a84ff; --tint: rgba(10, 132, 255, .18); --bad: #ff6961; } }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg); font: 18px/1.5 system-ui, -apple-system, 'Apple SD Gothic Neo', sans-serif; }
-    main { max-width: 640px; margin: 0 auto; padding: 48px 16px; }
-    h1 { font-size: 32px; margin: 0 0 12px; }
-    p { margin: 0 0 16px; color: var(--muted); }
-    video { display: block; width: 100%; max-width: 420px; aspect-ratio: 4/3; object-fit: cover; transform: scaleX(-1); border-radius: 12px; background: #000; margin: 0 0 16px; }
-    button { font: inherit; font-weight: 700; padding: 14px 24px; border-radius: 10px; border: 2px solid #111; background: var(--accent); color: #111; cursor: pointer; }
-    button:disabled { opacity: .5; cursor: default; }
-    button.secondary { background: transparent; color: var(--fg); border-color: var(--line); margin-left: 8px; }
-    #faceState { font-weight: 700; color: var(--fg); }
-    #error { color: #d32f2f; font-weight: 700; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg); font: 19px/1.5 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -.01em; -webkit-font-smoothing: antialiased; }
+    main { width: 100%; max-width: 600px; padding: 48px 16px; text-align: center; }
+    h1 { font-size: clamp(36px, 6vw, 52px); line-height: 1.08; font-weight: 700; letter-spacing: -.03em; margin: 0 0 16px; }
+    p { margin: 0 0 20px; color: var(--muted); }
+    video { display: block; width: 100%; max-width: 420px; aspect-ratio: 4/3; object-fit: cover; transform: scaleX(-1); border-radius: 24px; background: #000; margin: 8px auto 20px; box-shadow: 0 18px 50px rgba(0, 0, 0, .18); }
+    button { font: inherit; font-weight: 600; font-size: 17px; padding: 13px 28px; border-radius: 980px; border: 0; background: var(--accent); color: #fff; cursor: pointer; transition: transform .1s ease-out, opacity .2s; }
+    button:active { transform: scale(.97); }
+    button:disabled { opacity: .4; cursor: default; }
+    button.secondary { background: var(--tint); color: var(--accent); margin-left: 8px; }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    #faceState { font-weight: 600; color: var(--fg); }
+    #error { color: var(--bad); font-weight: 600; }
     [hidden] { display: none !important; }
-    #stage { position: fixed; inset: 0; background: #111; cursor: none; }
-    #dot { position: fixed; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: var(--accent); border: 4px solid #fff; transition: left .5s ease, top .5s ease; }
-    #dot.collect { transform: scale(.55); transition: left .5s ease, top .5s ease, transform .3s ease; }
-    #stageText { position: fixed; left: 50%; top: 50%; transform: translate(-50%, 56px); color: #bbb; font-size: 16px; text-align: center; }
+    #stage { position: fixed; inset: 0; background: #000; cursor: none; }
+    #dot { position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: #0a84ff; border: 4px solid #fff; box-shadow: 0 0 30px rgba(10, 132, 255, .7); transition: left .5s cubic-bezier(.2, .8, .2, 1), top .5s cubic-bezier(.2, .8, .2, 1); }
+    #dot.collect { transform: scale(.55); transition: left .5s cubic-bezier(.2, .8, .2, 1), top .5s cubic-bezier(.2, .8, .2, 1), transform .3s cubic-bezier(.2, .8, .2, 1); }
+    #stageText { position: fixed; left: 50%; top: 50%; transform: translate(-50%, 56px); color: #a1a1a6; font-size: 17px; text-align: center; letter-spacing: -.01em; }
     @media (prefers-reduced-motion: reduce) { #dot, #dot.collect { transition: none; } }
   </style>
 </head>
 <body>
   <main>
     <section id="intro">
-      <h1>시선 교정 · Calibration</h1>
-      <p>카메라 영상은 이 기기 안에서만 처리돼요. 음성은 크롬 음성 인식 서비스로 전송될 수 있어요.<br>
-      Camera video stays on this device. Voice may be sent to Chrome's speech service.</p>
+      <h1>시선 교정</h1>
+      <p>카메라 영상은 이 기기 안에서만 처리돼요. 음성은 크롬 음성 인식 서비스로 전송될 수 있어요.</p>
       <p id="error" hidden></p>
-      <button id="allow">카메라·마이크 허용 / Allow camera &amp; mic</button>
+      <button id="allow">카메라·마이크 허용</button>
     </section>
 
     <section id="ready" hidden>
-      <h1>얼굴을 맞춰 주세요 · Position your face</h1>
+      <h1>얼굴을 맞춰 주세요</h1>
       <video id="preview" muted playsinline autoplay></video>
-      <p id="faceState">얼굴을 찾는 중… / Looking for your face…</p>
-      <p>평소 앉는 자세로 앉아 주세요. 화면 안내에 따라 점을 차례로 바라보면 돼요. 1분쯤 걸려요.<br>
-      Sit as you normally would, then follow the on-screen dots. It takes about a minute.</p>
-      <button id="begin" disabled>교정 시작 / Start</button>
+      <p id="faceState">얼굴을 찾는 중…</p>
+      <p>평소 앉는 자세로 앉아 주세요. 화면 안내에 따라 점을 차례로 바라보면 돼요. 1분쯤 걸려요.</p>
+      <button id="begin" disabled>교정 시작</button>
     </section>
 
     <section id="done" hidden>
-      <h1>교정 완료 · Done</h1>
+      <h1>교정 완료</h1>
       <p id="resultText"></p>
-      <button id="finish">닫기 / Close</button>
-      <button id="again" class="secondary">다시 하기 / Redo</button>
+      <button id="finish">닫기</button>
+      <button id="again" class="secondary">다시 하기</button>
     </section>
   </main>
 

@@ -21,8 +21,8 @@ let collecting = null;
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type !== 'frame') return;
   $('faceState').textContent = msg.face
-    ? '얼굴을 찾았어요 / Face found'
-    : '얼굴을 찾는 중… 카메라를 바라봐 주세요 / Looking for your face…';
+    ? '얼굴을 찾았어요'
+    : '얼굴을 찾는 중… 카메라를 바라봐 주세요';
   $('begin').disabled = !msg.face;
   if (collecting && msg.face && !msg.blink) collecting.push(HEAD_MODE ? GazeModel.headOnly(msg.features) : msg.features);
 });
@@ -42,7 +42,7 @@ $('allow').addEventListener('click', async () => {
     previewStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   } catch (error) {
     $('error').hidden = false;
-    $('error').textContent = `권한을 받지 못했어요 / Permission failed: ${error.name}. `
+    $('error').textContent = `권한을 받지 못했어요 (${error.name}). `
       + '주소창의 설정과 시스템 설정의 카메라·마이크 권한을 확인해 주세요.';
     return;
   }
@@ -102,9 +102,9 @@ async function collectPoint(point, index, samples, settleMs = SETTLE_MS) {
 }
 
 function describeError(px) {
-  if (px <= GOOD_ERROR_PX) return `정확도가 좋아요 / Good accuracy: about ${Math.round(px)}px.`;
-  if (px <= OK_ERROR_PX) return `쓸 수 있는 정도예요 / Usable: about ${Math.round(px)}px. 작은 링크는 "번호"로 고르세요. Use "numbers" for small links.`;
-  return `오차가 커요 / High error: about ${Math.round(px)}px. 조명을 밝게 하고 다시 해 보세요. Try better lighting and redo.`;
+  if (px <= GOOD_ERROR_PX) return `정확도가 좋아요. 오차는 약 ${Math.round(px)}px이에요.`;
+  if (px <= OK_ERROR_PX) return `쓸 수 있는 정도예요. 오차는 약 ${Math.round(px)}px이에요. 작은 링크는 "번호"로 고르세요.`;
+  return `오차가 커요. 약 ${Math.round(px)}px이에요. 조명을 밝게 하고 다시 해 보세요.`;
 }
 
 async function runCalibration() {
@@ -120,13 +120,13 @@ async function runCalibration() {
   const total = eyePoints.length + headPoints.length;
   for (const [i, point] of eyePoints.entries()) {
     $('stageText').textContent = HEAD_MODE
-      ? `머리를 돌려 코끝으로 점을 가리켜 주세요 · Turn your head to point your nose at the dot (${i + 1}/${total})`
-      : `눈으로만 점을 바라봐 주세요 · Look at the dot with your eyes only (${i + 1}/${total})`;
+      ? `머리를 돌려 코끝으로 점을 가리켜 주세요 (${i + 1}/${total})`
+      : `눈으로만 점을 바라봐 주세요 (${i + 1}/${total})`;
     await collectPoint(point, i, samples, HEAD_MODE ? HEAD_SETTLE_MS : SETTLE_MS);
   }
   for (const [i, point] of headPoints.entries()) {
     const index = eyePoints.length + i;
-    $('stageText').textContent = `이번엔 머리를 돌려서 점을 바라봐 주세요 · Now turn your head to face the dot (${index + 1}/${total})`;
+    $('stageText').textContent = `이번엔 머리를 돌려서 점을 바라봐 주세요 (${index + 1}/${total})`;
     await collectPoint(point, index, samples, HEAD_SETTLE_MS);
   }
 
@@ -136,7 +136,7 @@ async function runCalibration() {
   const distinct = new Set(samples.map((s) => s.point)).size;
   if (distinct < total) {
     show('done');
-    $('resultText').textContent = '일부 점에서 얼굴을 찾지 못했어요. 다시 해 주세요. / Your face was lost on some dots. Please redo.';
+    $('resultText').textContent = '일부 점에서 얼굴을 찾지 못했어요. 다시 해 주세요.';
     return;
   }
 

@@ -164,8 +164,7 @@ try {
   const clicks = () => page.evaluate(() => JSON.parse(document.getElementById('log').textContent || '{"a":0,"b":0,"pay":0}'));
   const boxStyle = () => page.evaluate(() => {
     const b = document.getElementById('__nungil-host').shadowRoot.querySelector('.box');
-    const r = b.getBoundingClientRect();
-    return { display: getComputedStyle(b).display, left: r.left, top: r.top, width: r.width };
+    return { display: getComputedStyle(b).display, left: parseFloat(b.style.left), top: parseFloat(b.style.top), width: parseFloat(b.style.width) };
   });
 
   await check('dwell click is on by default, and there is no moving pointer', async () => {

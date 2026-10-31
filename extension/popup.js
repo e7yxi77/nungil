@@ -42,8 +42,7 @@ async function render() {
   for (const id of TOGGLES) $(id).checked = settings[id];
   $('cursor').value = settings.cursor;
   $('dwellMs').value = settings.dwellMs;
-  $('dwellValue').textContent = `${(settings.dwellMs / 1000).toFixed(1)}s`;
-  $('lang').value = settings.lang;
+  $('dwellValue').textContent = `${(settings.dwellMs / 1000).toFixed(1)}초`;
 
   const { status = {} } = await chrome.storage.session.get('status');
   const stored = await chrome.storage.local.get(['model', 'modelHead', 'oauth:chatgpt']);
@@ -51,9 +50,12 @@ async function render() {
   $('codex').textContent = signedIn ? 'ChatGPT 로그아웃' : 'ChatGPT 로그인 (AI 기능)';
   const model = settings.cursor === 'head' ? stored.modelHead : stored.model;
   const failed = (v) => String(v ?? '').startsWith('error');
-  setCell('camera', status.camera ?? '-', failed(status.camera));
+  const STATES = { on: '켜짐', listening: '듣는 중' };
+  const say = (v) => STATES[v] ?? (failed(v) ? `오류 (${String(v).slice(6)})` : v ?? '-');
+  setCell('camera', say(status.camera), failed(status.camera));
   setCell('face', status.face === undefined ? '-' : status.face ? '인식됨' : '안 보임', status.face === false);
-  setCell('voice', status.voice ?? '-', failed(status.voice));
+  const voice = String(status.voice ?? '').startsWith('sound:') ? '소리 조작 중' : say(status.voice);
+  setCell('voice', voice, failed(status.voice));
   const stale = model && model.version !== NUNGIL_MODEL_VERSION;
   setCell('model', !model ? '교정 필요' : stale ? '다시 교정 필요' : `약 ${Math.round(model.errorPx)}px`, !model || stale);
 }
@@ -71,7 +73,6 @@ $('dwell').addEventListener('change', (e) => patchSettings({ dwell: e.target.che
 for (const id of TOGGLES) $(id).addEventListener('change', (e) => patchSettings({ [id]: e.target.checked }));
 $('cursor').addEventListener('change', (e) => patchSettings({ cursor: e.target.value }));
 $('dwellMs').addEventListener('input', (e) => patchSettings({ dwellMs: Number(e.target.value) }));
-$('lang').addEventListener('change', (e) => patchSettings({ lang: e.target.value }));
 $('codex').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: signedIn ? 'codex-logout' : 'codex-login' }).catch(() => {});
 });

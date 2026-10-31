@@ -2,7 +2,6 @@
 // voice.html when offscreen recognition is refused.
 (() => {
   const params = new URLSearchParams(location.search);
-  const lang = params.get('lang') || 'ko-KR';
   if (params.get('sound') === '1') return; // sound control replaces speech
   const Recognition = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
   const FATAL = new Set(['not-allowed', 'service-not-allowed', 'language-not-supported']);
@@ -19,7 +18,7 @@
 
   function start() {
     const rec = new Recognition();
-    rec.lang = lang;
+    rec.lang = 'ko-KR';
     rec.continuous = true;
     rec.interimResults = false;
     rec.maxAlternatives = 3;

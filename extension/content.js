@@ -52,7 +52,7 @@
     let bias = { x: 0, y: 0 }; // screen px, corrects drift since calibration
     let lastScreen = null; // smoothed gaze before bias
     let recentering = null; // { samples, collecting, point }
-    let t = nungilStrings(settings.lang);
+    const t = nungilStrings();
 
     let filter = createFilter();
     const mouthGesture = createHoldGesture(MOUTH_MS, { repeatMs: MOUTH_REPEAT_MS });
@@ -87,32 +87,52 @@
     const root = host.attachShadow({ mode: 'open' });
     root.innerHTML = `
       <style>
-        * { box-sizing: border-box; font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; }
-        .box { position: fixed; display: none; border: 4px solid #ffc107; outline: 2px solid #111; border-radius: 6px; background: rgba(255, 193, 7, .12); }
-        .box.risky { border-color: #ff5252; background: rgba(255, 82, 82, .12); }
-        .box.fire { background: rgba(255, 193, 7, .55); }
-        .ring { position: fixed; display: none; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
-          -webkit-mask: radial-gradient(farthest-side, transparent 68%, #000 70%); mask: radial-gradient(farthest-side, transparent 68%, #000 70%); }
-        .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: min(80vw, 640px); padding: 12px 20px; border-radius: 10px;
-          background: #111; color: #fff; font-size: 18px; line-height: 1.4; font-weight: 600; text-align: center; display: none; box-shadow: 0 4px 18px rgba(0,0,0,.4); }
-        .recenter { position: fixed; display: none; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: #ffc107; border: 5px solid #111; outline: 3px solid #fff; }
-        .badge { position: fixed; min-width: 30px; height: 30px; padding: 0 7px; border-radius: 8px; background: #ffc107; color: #111; font-size: 18px; line-height: 26px;
-          font-weight: 800; text-align: center; border: 2px solid #111; }
-        .panel { position: fixed; inset: 0; display: none; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 4vmin; padding: 8vmin; background: rgba(0, 0, 0, .78); pointer-events: auto; }
-        .panel button { border: 3px solid #fff; border-radius: 16px; background: #1e1e1c; color: #fff; font-size: clamp(20px, 3vmin, 34px); font-weight: 700; line-height: 1.3; padding: 12px; word-break: keep-all; cursor: pointer; }
-        .help { position: fixed; top: 24px; right: 24px; width: 360px; max-width: calc(100vw - 32px); padding: 18px 20px; border-radius: 12px; background: #111; color: #fff; display: none; }
-        .help h2 { margin: 0 0 10px; font-size: 18px; }
-        .help div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 14px; border-top: 1px solid #333; }
-        .help b { color: #ffc107; font-weight: 700; }
-        .reader { position: fixed; inset: 0; overflow-y: auto; padding: 48px 16px 120px; background: #fffdf5; color: #111; font-size: 24px; line-height: 1.7; display: none; pointer-events: auto; }
-        .reader > * { max-width: 760px; margin: 0 auto 24px; }
-        .reader h1, .reader .heading { font-weight: 800; }
-        .reader h1 { font-size: 36px; line-height: 1.3; }
-        .reader .current { background: #fff3c4; border-radius: 6px; box-shadow: 0 0 0 8px #fff3c4; }
-        .reader mark { background: #ffc107; color: #111; border-radius: 3px; }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        .box { position: fixed; display: none; border-radius: 10px; background: rgba(0, 113, 227, .10); box-shadow: 0 0 0 3px #0071e3, 0 0 0 7px rgba(0, 113, 227, .22); transition: left .22s cubic-bezier(.2, .8, .2, 1), top .22s cubic-bezier(.2, .8, .2, 1), width .22s cubic-bezier(.2, .8, .2, 1), height .22s cubic-bezier(.2, .8, .2, 1); }
+        .box.risky { background: rgba(255, 59, 48, .10); box-shadow: 0 0 0 3px #ff3b30, 0 0 0 7px rgba(255, 59, 48, .22); }
+        .box.fire { background: rgba(0, 113, 227, .35); }
+        .ring { position: fixed; display: none; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .35));
+          -webkit-mask: radial-gradient(farthest-side, transparent 72%, #000 74%); mask: radial-gradient(farthest-side, transparent 72%, #000 74%); }
+        .recenter { position: fixed; display: none; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #0071e3; border: 4px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12), 0 8px 24px rgba(0, 0, 0, .3); }
+        .toast { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); max-width: min(80vw, 620px); padding: 13px 22px; border-radius: 22px; background: rgba(29, 29, 31, .78); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); color: #fff; font-size: 16px; line-height: 1.4; font-weight: 500; letter-spacing: -.01em; text-align: center; display: none; box-shadow: 0 10px 34px rgba(0, 0, 0, .28); animation: rise .28s cubic-bezier(.2, .8, .2, 1); }
+        .badge { position: fixed; min-width: 28px; height: 28px; padding: 0 8px; border-radius: 14px; background: #0071e3; color: #fff; font-size: 15px; line-height: 28px; font-weight: 600; text-align: center; box-shadow: 0 0 0 2px #fff, 0 4px 12px rgba(0, 0, 0, .28); }
+        .help { position: fixed; top: 20px; right: 20px; width: 360px; max-width: calc(100vw - 32px); padding: 20px 22px; border-radius: 20px; background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); color: #1d1d1f; display: none; box-shadow: 0 18px 50px rgba(0, 0, 0, .22); }
+        .help h2 { margin: 0 0 10px; font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
+        .help div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: 13px; border-top: .5px solid rgba(0, 0, 0, .14); }
+        .help b { color: #0071e3; font-weight: 600; }
+        .panel { position: fixed; inset: 0; display: none; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 3.5vmin; padding: 8vmin; background: rgba(0, 0, 0, .42); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); pointer-events: auto; animation: fade .24s cubic-bezier(.2, .8, .2, 1); }
+        .panel button { border: 0; border-radius: 24px; background: rgba(255, 255, 255, .92); color: #1d1d1f; font-size: clamp(20px, 2.8vmin, 32px); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; padding: 14px; word-break: keep-all; cursor: pointer; box-shadow: 0 12px 34px rgba(0, 0, 0, .22); animation: materialize .32s cubic-bezier(.2, .8, .2, 1); transition: transform .12s ease-out; }
+        .panel button:active { transform: scale(.97); }
+        .reader { position: fixed; inset: 0; overflow-y: auto; padding: 72px 16px 140px; background: #fff; color: #1d1d1f; font-size: 22px; line-height: 1.6; letter-spacing: -.005em; display: none; pointer-events: auto; animation: fade .24s cubic-bezier(.2, .8, .2, 1); }
+        .reader > * { max-width: 700px; margin: 0 auto 22px; }
+        .reader h1, .reader .heading { font-weight: 700; letter-spacing: -.02em; }
+        .reader h1 { font-size: 40px; line-height: 1.12; margin-bottom: 36px; letter-spacing: -.03em; }
+        .reader .current { background: rgba(0, 113, 227, .08); border-radius: 12px; box-shadow: 0 0 0 10px rgba(0, 113, 227, .08); }
+        .reader mark { background: #0071e3; color: #fff; border-radius: 5px; padding: 0 2px; }
+        @keyframes fade { from { opacity: 0; } }
+        @keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } }
+        @keyframes materialize { from { opacity: 0; transform: scale(.94); } }
         @media (prefers-color-scheme: dark) {
-          .reader { background: #161616; color: #f2f2f2; }
-          .reader .current { background: #3a3000; box-shadow: 0 0 0 8px #3a3000; }
+          .reader { background: #000; color: #f5f5f7; }
+          .reader .current { background: rgba(10, 132, 255, .2); box-shadow: 0 0 0 10px rgba(10, 132, 255, .2); }
+          .reader mark { background: #0a84ff; }
+          .help { background: rgba(44, 44, 46, .78); color: #f5f5f7; }
+          .help div { border-top-color: rgba(255, 255, 255, .16); }
+          .help b { color: #64aaff; }
+          .panel button { background: rgba(44, 44, 46, .94); color: #f5f5f7; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .box, .panel button { transition: none; }
+          .toast, .panel, .panel button, .reader { animation: none; }
+        }
+        @media (prefers-reduced-transparency: reduce) {
+          .toast { background: #1d1d1f; -webkit-backdrop-filter: none; backdrop-filter: none; }
+          .help { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+          .panel { background: rgba(0, 0, 0, .86); -webkit-backdrop-filter: none; backdrop-filter: none; }
+        }
+        @media (prefers-contrast: more) {
+          .panel button { background: #fff; color: #000; outline: 3px solid #000; }
+          .box { box-shadow: 0 0 0 4px #000, 0 0 0 7px #fff; }
         }
       </style>
       <div class="reader"></div>
@@ -131,6 +151,7 @@
     document.documentElement.appendChild(host);
 
     function toast(text, ms = 2500) {
+      if (!text) return;
       ui.toast.textContent = text;
       ui.toast.style.display = 'block';
       clearTimeout(toastTimer);
@@ -237,7 +258,7 @@
     function drawRing(x, y, progress) {
       const deg = Math.round(progress * 360);
       ui.ring.style.cssText = `display:block;left:${x}px;top:${y}px;`
-        + `background:conic-gradient(#ffc107 ${deg}deg, rgba(0,0,0,.45) ${deg}deg)`;
+        + `background:conic-gradient(#0071e3 ${deg}deg, rgba(255,255,255,.75) ${deg}deg)`;
     }
 
     function updatePanelDwell(now) {
@@ -385,7 +406,7 @@
 
     // Webcam gaze can't tell neighbours in a navbar apart, but it can easily tell
     // these apart: the choices move to the middle of the screen, large and far from
-    // each other. Numbered on the page too, so it's clear which is which.
+    // each other.
     function openPanel(els) {
       hideNumbers();
       const chosen = els.slice(0, PANEL_MAX_ITEMS);
@@ -404,9 +425,9 @@
         return b;
       });
       ui.panel.replaceChildren(...panelItems);
+      ui.panel.style.gridTemplateColumns = `repeat(${panelItems.length <= 4 ? 2 : 3}, 1fr)`;
       ui.panel.style.display = 'grid';
       numbered = panelItems;
-      chosen.forEach((el, i) => addBadge(el, i));
       setTarget(null, performance.now());
       lastTarget = null;
       dwellBlockedUntil = performance.now() + PANEL_SETTLE_MS;
@@ -506,7 +527,7 @@
       reader.speakId = `${Date.now()}-${i}`;
       reader.els[i].classList.add('current');
       reader.els[i].scrollIntoView({ block: 'center', behavior: scrollBehavior() });
-      chrome.runtime.sendMessage({ type: 'tts-speak', id: reader.speakId, text: reader.paragraphs[i].text, lang: settings.lang }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'tts-speak', id: reader.speakId, text: reader.paragraphs[i].text }).catch(() => {});
     }
 
     function onTtsEvent(msg) {
@@ -559,7 +580,7 @@
     function startAi(task, text, extra = {}) {
       const id = `${Date.now()}`;
       pendingAi = { id, task, ...extra };
-      chrome.runtime.sendMessage({ type: 'ai-request', id, task, text, lang: settings.lang, count: extra.els?.length }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'ai-request', id, task, text, count: extra.els?.length }).catch(() => {});
     }
 
     const articleText = (paragraphs) => `${document.title}\n\n${paragraphs.map((p) => p.text).join('\n')}`.slice(0, AI_MAX_CHARS);
@@ -889,7 +910,7 @@
         if (msg.command.name !== 'click' && msg.command.name !== 'number') toast(msg.transcript, 1500);
         runCommand(msg.command);
       } else if (msg.type === 'transcript') toast(msg.transcript, 1200);
-      else if (msg.type === 'voice-error' && msg.error !== 'network') toast(`${t.voiceError}: ${msg.error}`);
+      else if (msg.type === 'voice-error' && msg.error !== 'network') toast(msg.error === 'not-allowed' || msg.error === 'service-not-allowed' ? t.voiceDenied : `${t.voiceError} (${msg.error})`);
     };
     chrome.runtime.onMessage.addListener(onRuntimeMessage);
 
@@ -909,7 +930,6 @@
         if (s.dwell && !settings.dwell) dwellBlockedUntil = performance.now();
         if ((s.cursor ?? NUNGIL_DEFAULTS.cursor) !== settings.cursor) filter = createFilter();
         settings = { ...NUNGIL_DEFAULTS, ...s };
-        t = nungilStrings(settings.lang);
         if (!settings.enabled) clearOverlay();
       }
       if (m !== undefined) {

@@ -6,17 +6,17 @@ let settled = false;
 function succeed() {
   if (settled) return;
   settled = true;
-  $('title').textContent = '로그인 완료 · Signed in';
-  $('message').textContent = '이제 "로그인 버튼 눌러줘"나 "단순 보기"라고 말해 보세요. 이 탭은 닫아도 돼요. · Try "click the login button" or "simplify". You can close this tab.';
+  $('title').textContent = '로그인 완료';
+  $('message').textContent = '이제 "로그인 버튼 눌러줘"나 "단순 보기"라고 말해 보세요. 이 탭은 닫아도 돼요.';
 }
 
 function fail(reason) {
   if (settled) return;
   settled = true;
-  $('title').textContent = '로그인 실패 · Sign-in failed';
+  $('title').textContent = '로그인 실패';
   $('message').textContent = reason === 'reload_extension'
-    ? 'chrome://extensions 에서 눈길을 새로고침한 뒤 다시 시도해 주세요. 계속 이 화면이 나오면 삭제하고 다시 로드해 주세요. · Reload Nungil in chrome://extensions and try again. If this keeps appearing, remove it and load it again.'
-    : `확장 프로그램 팝업에서 다시 시도해 주세요. · Please try again from the popup. (${reason})`;
+    ? 'chrome://extensions 에서 눈길을 새로고침한 뒤 다시 시도해 주세요. 계속 이 화면이 나오면 삭제하고 다시 로드해 주세요.'
+    : `확장 프로그램 팝업에서 다시 시도해 주세요. (${reason})`;
 }
 
 const initialError = new URLSearchParams(location.search).get('error');

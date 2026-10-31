@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "눈길 Nungil",
-  "version": "0.4.2",
-  "description": "Browse the web with your eyes and voice. Gaze tracking stays on your device.",
+  "name": "눈길",
+  "version": "0.5.2",
+  "description": "눈과 목소리로 웹을 쓰세요. 시선 추적은 내 기기 안에서만 처리돼요.",
   "permissions": ["offscreen", "storage", "scripting", "tabs", "tts", "webNavigation"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_popup": "popup.html", "default_title": "눈길 Nungil" },
+  "action": { "default_popup": "popup.html", "default_title": "눈길" },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

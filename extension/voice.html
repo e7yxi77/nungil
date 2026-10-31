@@ -4,14 +4,16 @@
   <meta charset="utf-8">
   <title>눈길 음성 인식</title>
   <style>
-    body { font: 16px system-ui, sans-serif; margin: 40px; color: #111; background: #fff; }
-    @media (prefers-color-scheme: dark) { body { color: #eee; background: #161616; } }
+    :root { --bg: #f5f5f7; --fg: #1d1d1f; --muted: #6e6e73; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #f5f5f7; --muted: #98989d; } }
+    body { margin: 0; min-height: 100vh; display: grid; place-content: center; text-align: center; padding: 16px; background: var(--bg); color: var(--fg); font: 19px/1.5 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    h1 { font-size: 40px; letter-spacing: -.03em; margin: 0 0 12px; }
+    p { color: var(--muted); margin: 0; }
   </style>
 </head>
 <body>
   <h1>눈길 음성 인식</h1>
   <p>음성 명령을 듣는 탭이에요. 음성 명령을 쓰는 동안 닫지 마세요.</p>
-  <p>This tab listens for voice commands. Keep it open while using them.</p>
   <script src="lib/commands.js"></script>
   <script src="voice.js"></script>
 </body>
