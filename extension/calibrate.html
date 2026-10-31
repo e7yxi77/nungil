@@ -21,7 +21,7 @@
     #error { color: var(--bad); font-weight: 600; }
     [hidden] { display: none !important; }
     #stage { position: fixed; inset: 0; background: #000; cursor: none; }
-    #dot { position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: #0a84ff; border: 4px solid #fff; box-shadow: 0 0 30px rgba(10, 132, 255, .7); transition: left .5s cubic-bezier(.2, .8, .2, 1), top .5s cubic-bezier(.2, .8, .2, 1); }
+    #dot { z-index: 2; position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: #0a84ff; border: 4px solid #fff; box-shadow: 0 0 30px rgba(10, 132, 255, .7); transition: left .5s cubic-bezier(.2, .8, .2, 1), top .5s cubic-bezier(.2, .8, .2, 1); }
     #dot.collect { transform: scale(.55); transition: left .5s cubic-bezier(.2, .8, .2, 1), top .5s cubic-bezier(.2, .8, .2, 1), transform .3s cubic-bezier(.2, .8, .2, 1); }
     #dot.off { opacity: 0; }
     #phase { position: fixed; inset: 0; display: grid; place-content: center; gap: 18px; padding: 24px; text-align: center; opacity: 0; transition: opacity .9s ease; pointer-events: none; }
@@ -37,6 +37,30 @@
       #phaseTitle, #phase::before, section:not([hidden]) { animation: none; }
       #phaseTitle { color: #fff; background: none; }
       #phase { transition: opacity .2s; }
+    }
+    .scan { position: relative; width: min(340px, 72vw); aspect-ratio: 1; margin: 12px auto 26px; }
+    .scan video { position: absolute; left: 11%; top: 11%; width: 78%; height: 78%; max-width: none; margin: 0; aspect-ratio: auto; object-fit: cover; border-radius: 50%; box-shadow: none; animation: breathe 3.4s ease-in-out infinite; }
+    .scan.full video { animation: none; }
+    .ticks { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+    .ticks line { stroke: rgba(134, 134, 139, .38); stroke-width: 3; stroke-linecap: round; transition: stroke .35s ease, stroke-width .35s cubic-bezier(.2, .8, .2, 1); }
+    .ticks line.lit { stroke: #30d158; stroke-width: 3.6; }
+    .scan:not(.full) .ticks.waiting line:not(.lit) { animation: shimmer 2.2s ease-in-out infinite; animation-delay: var(--d); }
+    @keyframes shimmer { 50% { stroke: rgba(134, 134, 139, .85); } }
+    @keyframes breathe { 50% { transform: scale(.975); } }
+    #stageRing { position: fixed; left: 50%; top: 50%; width: 112px; height: 112px; margin: -56px 0 0 -56px; transition: opacity .6s ease; }
+    #stageRing.off { opacity: 0; }
+    #stageRing line { stroke: rgba(255, 255, 255, .22); stroke-width: 4; }
+    #stageRing line.lit { stroke: #30d158; }
+    #success { display: block; width: 112px; height: 112px; margin: 0 auto 20px; }
+    #success[hidden] { display: none; }
+    #success circle, #success path { fill: none; stroke: #30d158; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+    #success circle { stroke-dasharray: 283; stroke-dashoffset: 283; transform: rotate(-90deg); transform-origin: center; animation: draw .8s cubic-bezier(.2, .8, .2, 1) forwards; }
+    #success path { stroke-dasharray: 60; stroke-dashoffset: 60; animation: draw .45s .55s cubic-bezier(.2, .8, .2, 1) forwards; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .scan video, .ticks.waiting line { animation: none !important; }
+      .ticks line { transition: none; }
+      #success circle, #success path { animation: none; stroke-dashoffset: 0; }
     }
     #stageText { position: fixed; left: 50%; top: 50%; transform: translate(-50%, 56px); color: #a1a1a6; font-size: 17px; text-align: center; letter-spacing: -.01em; }
     @media (prefers-reduced-motion: reduce) { #dot, #dot.collect { transition: none; } }
@@ -54,13 +78,17 @@
 
     <section id="ready" hidden>
       <h1>얼굴을 맞춰 주세요</h1>
-      <video id="preview" muted playsinline autoplay></video>
+      <div class="scan" id="scan">
+        <video id="preview" muted playsinline autoplay></video>
+        <svg class="ticks waiting" id="scanTicks" viewBox="0 0 200 200" aria-hidden="true"></svg>
+      </div>
       <p id="faceState">얼굴을 찾는 중…</p>
       <p>평소 앉는 자세로 앉아 주세요. 화면 안내에 따라 점을 차례로 바라보면 돼요. 1분쯤 걸려요. "다음"이라고 말해도 시작돼요.</p>
       <button id="begin" disabled>교정 시작</button>
     </section>
 
     <section id="done" hidden>
+      <svg id="success" viewBox="0 0 100 100" aria-hidden="true" hidden><circle cx="50" cy="50" r="45"/><path d="M30 52 L45 66 L71 37"/></svg>
       <h1 id="doneTitle">교정 완료</h1>
       <p id="resultText"></p>
       <button id="finish">닫기</button>
@@ -69,6 +97,7 @@
   </main>
 
   <div id="stage" hidden>
+    <svg id="stageRing" class="off" viewBox="0 0 200 200" aria-hidden="true"></svg>
     <div id="dot" class="off"></div>
     <div id="phase"><h2 id="phaseTitle"></h2><p id="phaseSub"></p></div>
     <div id="stageText"></div>

@@ -20,6 +20,46 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let previewStream = null;
 let collecting = null;
 
+// A ring of ticks around the camera, filled by holding the face in view for a moment.
+const SCAN_TICKS = 72;
+const SCAN_FILL_FRAMES = 30;
+const SCAN_DECAY_FRAMES = 3;
+let scanFrames = 0;
+
+function buildTicks(svg, count) {
+  const NS = 'http://www.w3.org/2000/svg';
+  return Array.from({ length: count }, (_, i) => {
+    const line = document.createElementNS(NS, 'line');
+    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+    line.setAttribute('x1', 100 + Math.cos(angle) * 88);
+    line.setAttribute('y1', 100 + Math.sin(angle) * 88);
+    line.setAttribute('x2', 100 + Math.cos(angle) * 98);
+    line.setAttribute('y2', 100 + Math.sin(angle) * 98);
+    line.style.setProperty('--d', `${(i / count) * 2.2}s`);
+    svg.appendChild(line);
+    return line;
+  });
+}
+
+const scanTicks = buildTicks($('scanTicks'), SCAN_TICKS);
+const stageTicks = buildTicks($('stageRing'), SCAN_TICKS);
+
+function lightTicks(ticks, share) {
+  const lit = Math.round(share * ticks.length);
+  ticks.forEach((tick, i) => tick.classList.toggle('lit', i < lit));
+}
+
+function updateScan(face) {
+  scanFrames = face ? Math.min(SCAN_FILL_FRAMES, scanFrames + 1) : Math.max(0, scanFrames - SCAN_DECAY_FRAMES);
+  lightTicks(scanTicks, scanFrames / SCAN_FILL_FRAMES);
+  const full = scanFrames === SCAN_FILL_FRAMES;
+  $('scan').classList.toggle('full', full);
+  $('begin').disabled = !full;
+  $('faceState').textContent = full
+    ? '좋아요. 얼굴을 찾았어요'
+    : face ? '그대로 잠시 있어 주세요…' : '얼굴을 찾는 중… 카메라를 바라봐 주세요';
+}
+
 // Whichever main button is showing, so "다음" works for people who can't press it.
 function pressMain() {
   const button = ['allow', 'begin', 'finish'].map($).find((b) => b.offsetParent && !b.disabled);
@@ -29,6 +69,7 @@ function pressMain() {
 // One big message at a time on a dark screen, with the dots out of the way.
 async function showPhase(title, sub) {
   $('dot').classList.add('off');
+  $('stageRing').classList.add('off');
   $('stageText').textContent = '';
   $('phaseTitle').textContent = title;
   $('phaseSub').textContent = sub;
@@ -37,15 +78,13 @@ async function showPhase(title, sub) {
   $('phase').classList.remove('on');
   await sleep(PHASE_FADE_MS);
   $('dot').classList.remove('off');
+  $('stageRing').classList.remove('off');
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'command' && msg.command.name === 'next') { pressMain(); return; }
   if (msg.type !== 'frame') return;
-  $('faceState').textContent = msg.face
-    ? '얼굴을 찾았어요'
-    : '얼굴을 찾는 중… 카메라를 바라봐 주세요';
-  $('begin').disabled = !msg.face;
+  updateScan(msg.face);
   if (collecting && msg.face && !msg.blink) collecting.push(msg.features);
 });
 
@@ -135,12 +174,14 @@ async function runCalibration() {
   await sleep(600);
 
   const samples = [];
+  lightTicks(stageTicks, 0);
   const firstRound = shuffledPoints();
   const total = firstRound.length + SECOND_ROUND.length;
   const collectRound = async (points, offset) => {
     for (const [i, point] of points.entries()) {
       $('stageText').textContent = `눈으로만 점을 바라봐 주세요 (${offset + i + 1}/${total})`;
       await collectPoint(point, offset + i, samples);
+      lightTicks(stageTicks, (offset + i + 1) / total);
     }
   };
   await showPhase('먼저 눈으로만 점을 바라봐 주세요', '머리는 움직이지 말고, 눈으로만 따라가요.');
@@ -152,6 +193,7 @@ async function runCalibration() {
   if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
 
   const distinct = new Set(samples.map((s) => s.point)).size;
+  $('success').toggleAttribute('hidden', true); // SVG elements have no .hidden property
   if (distinct < total) {
     show('done');
     $('resultText').textContent = '일부 점에서 얼굴을 찾지 못했어요. 다시 해 주세요.';
@@ -166,6 +208,7 @@ async function runCalibration() {
   await chrome.storage.local.set({ model: { ...model, errorPx, errorX, errorY, version: NUNGIL_MODEL_VERSION, at: Date.now() } });
   await chrome.storage.local.remove('gazeBias');
   show('done');
+  $('success').toggleAttribute('hidden', false);
   $('resultText').textContent = describeError(errorPx);
 }
 
