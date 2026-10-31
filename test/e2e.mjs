@@ -971,6 +971,57 @@ try {
     results.push(`INFO after restart voice=${s?.voice ?? 'none'} tabs=${(await context.pages()).map((p) => p.url()).join(' | ')}`);
   });
 
+  await check('leaving Chrome turns the camera off, and coming back turns it on', async () => {
+    await setSettings({ enabled: true });
+    await until(() => sw.evaluate(() => chrome.offscreen.hasDocument()), 'tracker running', 15000);
+    // Headless Chrome has no other apps to leave for, so focus reports are simulated.
+    const hasFocusStub = await sw.evaluate(async () => {
+      const real = chrome.windows.getAll;
+      globalThis.__realGetAll = real;
+      chrome.windows.getAll = async () => [];
+      return true;
+    });
+    assert.ok(hasFocusStub);
+    const focus = (id) => sw.evaluate((w) => onWindowFocus(w ?? chrome.windows.WINDOW_ID_NONE), id);
+    const running = () => sw.evaluate(() => chrome.offscreen.hasDocument());
+
+    // A brief switch between windows must not touch the camera.
+    await focus(null);
+    await page.waitForTimeout(1000);
+    await focus(1);
+    await page.waitForTimeout(2600);
+    assert.strictEqual(await running(), true, 'a short blip keeps it on');
+
+    await focus(null);
+    await until(async () => !(await running()), 'camera off after leaving', 8000);
+    await focus(1);
+    await until(running, 'camera back on return', 8000);
+    assert.strictEqual(await sw.evaluate(async () => (await chrome.storage.session.get('asleep')).asleep), undefined);
+
+    // Settings changed while away must not wake it.
+    await focus(null);
+    await until(async () => !(await running()), 'asleep again', 8000);
+    await setSettings({ dwell: false, sound: false });
+    await sw.evaluate(() => restart());
+    await page.waitForTimeout(800);
+    assert.strictEqual(await running(), false, 'stays asleep');
+    await focus(1);
+    await until(running, 'awake', 8000);
+    await sw.evaluate(() => { chrome.windows.getAll = globalThis.__realGetAll; });
+  });
+
+  await check('a window still in focus cancels the sleep', async () => {
+    const focused = await sw.evaluate(async () => {
+      chrome.windows.getAll = async () => [{ focused: true }];
+      await onWindowFocus(chrome.windows.WINDOW_ID_NONE);
+      return true;
+    });
+    assert.ok(focused);
+    await page.waitForTimeout(3500);
+    assert.strictEqual(await sw.evaluate(() => chrome.offscreen.hasDocument()), true);
+    await sw.evaluate(() => { chrome.windows.getAll = globalThis.__realGetAll; });
+  });
+
   await check('sound mode starts mic analysis instead of speech recognition', async () => {
     await setSettings({ sound: true });
     const s = await until(async () => {

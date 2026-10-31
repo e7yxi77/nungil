@@ -32,15 +32,47 @@ async function openTracker() {
   });
 }
 
+const isAsleep = async () => (await chrome.storage.session.get('asleep')).asleep === true;
+
 const sync = () => serial(async () => {
   const { enabled } = await getSettings();
-  await (enabled ? openTracker() : closeTracker());
+  await (enabled && !(await isAsleep()) ? openTracker() : closeTracker());
 });
+
+// Leaving Chrome turns the camera and mic off completely; coming back turns them on.
+// Focus also drops for a moment when switching windows, and may while a settings
+// popup or permission prompt is open, so it's only sleep if that's still true later.
+const SLEEP_AFTER_MS = 3000;
+let sleepTimer = 0;
+
+async function chromeHasFocus() {
+  const windows = await chrome.windows.getAll();
+  if (windows.some((w) => w.focused)) return true;
+  return (await chrome.runtime.getContexts({ contextTypes: ['POPUP'] })).length > 0;
+}
+
+async function onWindowFocus(windowId) {
+  clearTimeout(sleepTimer);
+  if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+    if (await isAsleep()) {
+      await chrome.storage.session.remove('asleep');
+      sync();
+    }
+    return;
+  }
+  sleepTimer = setTimeout(async () => {
+    if (await chromeHasFocus()) return;
+    await chrome.storage.session.set({ asleep: true });
+    sync();
+  }, SLEEP_AFTER_MS);
+}
+
+chrome.windows.onFocusChanged.addListener(onWindowFocus);
 
 const restart = () => serial(async () => {
   await closeTracker();
   const { enabled } = await getSettings();
-  if (enabled) await openTracker();
+  if (enabled && !(await isAsleep())) await openTracker();
 });
 
 const CONTENT_FILES = ['lib/strings.js', 'lib/gaze-model.js', 'content.js'];
