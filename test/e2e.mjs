@@ -1186,7 +1186,7 @@ try {
     await sw.evaluate(() => chrome.storage.local.set({ needsRecenter: true }));
     await page.waitForTimeout(100);
 
-    const dot = () => page.evaluate(() => getComputedStyle(document.getElementById('__nungil-host').shadowRoot.querySelector('.recenter')).display);
+    const dot = () => page.evaluate(() => (document.getElementById('__nungil-host').shadowRoot.querySelector('.recenter').classList.contains('on') ? 'block' : 'none'));
     const size = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
     const before = await clicks();
     // An earlier attempt on no frames may still be waiting out its retry delay.
@@ -1197,6 +1197,14 @@ try {
     assert.strictEqual((await boxStyle()).display, 'none', 'nothing highlights yet');
     const veil = () => page.evaluate(() => document.getElementById('__nungil-host').shadowRoot.querySelector('.veil').classList.contains('on'));
     assert.strictEqual(await veil(), true, 'background blurred behind the dot');
+    const fades = await page.evaluate(() => {
+      const root = document.getElementById('__nungil-host').shadowRoot;
+      return [root.querySelector('.veil'), root.querySelector('.recenter')].map((el) => {
+        const cs = getComputedStyle(el);
+        return { props: cs.transitionProperty, opacity: cs.opacity };
+      });
+    });
+    assert.ok(fades.every((f) => f.props.includes('opacity')), JSON.stringify(fades));
     await say({ name: 'click' });
     await page.waitForTimeout(150);
     assert.deepStrictEqual(await clicks(), before, 'nothing can be pressed');

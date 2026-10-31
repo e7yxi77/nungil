@@ -107,9 +107,11 @@
         .box.fire { background: rgba(0, 113, 227, .35); }
         .ring { position: fixed; display: none; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .35));
           -webkit-mask: radial-gradient(farthest-side, transparent 72%, #000 74%); mask: radial-gradient(farthest-side, transparent 72%, #000 74%); }
-        .veil { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(16px) saturate(120%); backdrop-filter: blur(16px) saturate(120%); opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s; }
+        .veil { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(16px) saturate(120%); backdrop-filter: blur(16px) saturate(120%); opacity: 0; visibility: hidden; transition: opacity .6s ease, visibility .6s; }
         .veil.on { opacity: 1; visibility: visible; }
-        .recenter { transition: left .4s cubic-bezier(.2, .8, .2, 1), top .4s cubic-bezier(.2, .8, .2, 1); position: fixed; display: none; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #0a84ff; border: 4px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3), 0 0 32px rgba(10, 132, 255, .9); }
+        .recenter { position: fixed; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #0a84ff; border: 4px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3), 0 0 32px rgba(10, 132, 255, .9); opacity: 0; visibility: hidden; transform: scale(.5); transition: left .55s cubic-bezier(.2, .8, .2, 1), top .55s cubic-bezier(.2, .8, .2, 1), opacity .5s ease, transform .5s cubic-bezier(.2, .8, .2, 1), visibility .5s; }
+        .recenter.on { opacity: 1; visibility: visible; transform: none; }
+        .recenter.jump { transition: none; }
         .toast { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); max-width: min(80vw, 620px); padding: 13px 22px; border-radius: 22px; background: rgba(29, 29, 31, .78); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); color: #fff; font-size: 16px; line-height: 1.4; font-weight: 500; letter-spacing: -.01em; text-align: center; display: none; box-shadow: 0 10px 34px rgba(0, 0, 0, .28); animation: rise .28s cubic-bezier(.2, .8, .2, 1); }
         .badge { position: fixed; min-width: 28px; height: 28px; padding: 0 8px; border-radius: 14px; background: #0071e3; color: #fff; font-size: 15px; line-height: 28px; font-weight: 600; text-align: center; box-shadow: 0 0 0 2px #fff, 0 4px 12px rgba(0, 0, 0, .28); }
         .help { position: fixed; top: 20px; right: 20px; width: 360px; max-width: calc(100vw - 32px); padding: 20px 22px; border-radius: 20px; background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); color: #1d1d1f; display: none; box-shadow: 0 18px 50px rgba(0, 0, 0, .22); }
@@ -133,7 +135,7 @@
           .help b { color: #64aaff; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .box { transition: none; }
+          .box, .recenter, .veil { transition: none; }
           .toast, .reader { animation: none; }
         }
         @media (prefers-reduced-transparency: reduce) {
@@ -421,8 +423,20 @@
       return sorted[Math.floor(sorted.length / 2)];
     }
 
+    // Fades in where it appears, and glides from dot to dot.
+    function showDot(point) {
+      const fresh = !ui.recenter.classList.contains('on');
+      ui.recenter.classList.toggle('jump', fresh);
+      ui.recenter.style.left = `${point.x}px`;
+      ui.recenter.style.top = `${point.y}px`;
+      if (fresh) void ui.recenter.offsetWidth;
+      ui.recenter.classList.remove('jump');
+      ui.recenter.classList.add('on');
+      ui.veil.classList.add('on');
+    }
+
     function hideDot() {
-      ui.recenter.style.display = 'none';
+      ui.recenter.classList.remove('on');
       ui.veil.classList.remove('on');
     }
 
@@ -430,8 +444,7 @@
     // readings. Measuring on a timer alone records wherever the user happened to be
     // looking, and saves that as a correction. Resolves false if it never settles.
     async function collectAt(point, samples) {
-      ui.veil.classList.add('on');
-      ui.recenter.style.cssText = `display:block;left:${point.x}px;top:${point.y}px`;
+      showDot(point);
       recentering = { samples: [], collecting: false };
       await new Promise((resolve) => setTimeout(resolve, RECENTER_SETTLE_MS));
       recentering.collecting = true;
@@ -459,6 +472,7 @@
       recenterRetryAt = performance.now() + RECENTER_RETRY_MS;
       if (recenterAttempts >= RECENTER_MAX_ATTEMPTS) {
         recenterAttempts = 0;
+        needsRecenter = false;
         chrome.storage.local.remove('needsRecenter');
         toast(t.recenterTooFar, 5000);
         return;
@@ -469,6 +483,7 @@
     function finishRealign(kind, next, ok) {
       lastRealign = { kind, ok, at: Date.now(), ...(next ?? {}) };
       recenterAttempts = 0;
+      needsRecenter = false; // at once: the next frame must not start another round
       chrome.storage.local.remove('needsRecenter');
       if (ok) {
         saveBias(next);

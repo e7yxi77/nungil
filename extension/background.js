@@ -53,9 +53,16 @@ async function chromeHasFocus() {
   return (await chrome.runtime.getContexts({ contextTypes: ['POPUP'] })).length > 0;
 }
 
+// Chrome keeps running the old code after the files change until something reloads it.
+async function reloadIfUpdated() {
+  const onDisk = await fetch(chrome.runtime.getURL('manifest.json')).then((r) => r.json()).catch(() => null);
+  if (onDisk?.version && onDisk.version !== chrome.runtime.getManifest().version) chrome.runtime.reload();
+}
+
 async function onWindowFocus(windowId) {
   clearTimeout(sleepTimer);
   if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+    reloadIfUpdated();
     if (await isAsleep()) {
       const { sleptAt = 0 } = await chrome.storage.session.get('sleptAt');
       await chrome.storage.session.remove(['asleep', 'sleptAt']);

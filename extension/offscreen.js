@@ -1,6 +1,20 @@
 // Camera -> MediaPipe -> gaze features. Video frames never leave this document.
 import { FaceLandmarker, FilesetResolver } from './vendor/vision_bundle.mjs';
 
+// MediaPipe reports routine startup notes through console.warn and console.error, and
+// chrome://extensions lists those as errors. Only these exact notes are dropped.
+const ROUTINE_NOTES = [
+  /Sets FaceBlendshapesGraph acceleration to xnnpack by default/,
+  /OpenGL error checking is disabled/,
+  /Created TensorFlow Lite XNNPACK delegate for CPU/,
+];
+for (const level of ['warn', 'error']) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => {
+    if (!ROUTINE_NOTES.some((note) => note.test(String(args[0])))) original(...args);
+  };
+}
+
 const FRAME_MS = 40;
 const video = document.getElementById('video');
 
