@@ -1356,7 +1356,7 @@ try {
     assert.strictEqual(await cal.textContent('#introTitle'), '시선 교정을 할게요');
     await cal.click('#allow');
     await cal.waitForSelector('#begin:not([disabled])', { timeout: 45000 });
-    assert.strictEqual(await cal.evaluate(() => document.querySelectorAll('#scanTicks line.lit').length), 72, 'ring full before starting');
+    assert.strictEqual(await cal.evaluate(() => document.querySelectorAll('#scanTicks rect.lit').length), 72, 'ring full before starting');
     await cal.click('#begin');
     await cal.waitForFunction(() => document.getElementById('phase').classList.contains('on') && document.getElementById('phaseTitle').textContent.includes('눈으로만'), null, { timeout: 8000 });
     assert.ok(await cal.evaluate(() => document.getElementById('dot').classList.contains('off')), 'dots wait for the message');
@@ -1365,7 +1365,7 @@ try {
     await cal.waitForSelector('#done:not([hidden])', { timeout: 90000 });
     assert.strictEqual(await cal.textContent('#doneTitle'), '등록이 완료됐어요');
     assert.strictEqual(await cal.evaluate(() => getComputedStyle(document.getElementById('success')).display), 'block', 'check mark shows');
-    assert.strictEqual(await cal.evaluate(() => document.querySelectorAll('#stageRing line.lit').length), 72, 'progress ring reached the end');
+    assert.strictEqual(await cal.evaluate(() => document.querySelectorAll('#stageRing rect.lit').length), 72, 'progress ring reached the end');
     const { model } = await sw.evaluate(() => chrome.storage.local.get('model'));
     assert.ok(Number.isFinite(model.errorPx) && Number.isFinite(model.errorX) && Number.isFinite(model.errorY), JSON.stringify(model));
     assert.strictEqual(model.wx.length, 10);

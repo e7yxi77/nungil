@@ -30,15 +30,13 @@ let calibrating = false;
 function buildTicks(svg, count) {
   const NS = 'http://www.w3.org/2000/svg';
   return Array.from({ length: count }, (_, i) => {
-    const line = document.createElementNS(NS, 'line');
-    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-    line.setAttribute('x1', 100 + Math.cos(angle) * 88);
-    line.setAttribute('y1', 100 + Math.sin(angle) * 88);
-    line.setAttribute('x2', 100 + Math.cos(angle) * 98);
-    line.setAttribute('y2', 100 + Math.sin(angle) * 98);
-    line.style.setProperty('--d', `${(i / count) * 2.2}s`);
-    svg.appendChild(line);
-    return line;
+    const tick = document.createElementNS(NS, 'rect');
+    tick.setAttribute('x', 98.6);
+    tick.setAttribute('width', 2.8);
+    tick.setAttribute('rx', 1.4);
+    tick.setAttribute('transform', `rotate(${(i / count) * 360} 100 100)`);
+    svg.appendChild(tick);
+    return tick;
   });
 }
 
@@ -55,6 +53,7 @@ function updateScan(face) {
   lightTicks(scanTicks, scanFrames / SCAN_FILL_FRAMES);
   const full = scanFrames === SCAN_FILL_FRAMES;
   $('scan').classList.toggle('full', full);
+  $('scan').classList.toggle('seen', face);
   if (!calibrating) $('begin').disabled = !full;
   $('faceState').textContent = full
     ? '좋아요. 얼굴을 찾았어요'
