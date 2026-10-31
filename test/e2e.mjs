@@ -864,6 +864,16 @@ try {
     await page.bringToFront();
   });
 
+  await check('signed out, speech meant for the AI says so instead of going silent', async () => {
+    await page.evaluate(() => { document.getElementById('__nungil-host').shadowRoot.querySelector('.toast').textContent = ''; });
+    await say({ name: 'agent', goal: '오늘 날씨 알려줘', wake: false }, '');
+    await until(() => page.evaluate(() => document.getElementById('__nungil-host').shadowRoot.querySelector('.toast').textContent.includes('로그인')), 'sign-in notice', 4000);
+    await page.evaluate(() => { document.getElementById('__nungil-host').shadowRoot.querySelector('.toast').textContent = ''; });
+    await say({ name: 'agent', goal: '또 다른 말', wake: false }, '');
+    await page.waitForTimeout(500);
+    assert.strictEqual(await page.evaluate(() => document.getElementById('__nungil-host').shadowRoot.querySelector('.toast').textContent), '', 'not on every sentence');
+  });
+
   await check('recenter: looking at the dot removes a measured offset', async () => {
     const shifted = (x, y) => sw.evaluate(([id, f]) => chrome.tabs.sendMessage(id, { type: 'frame', face: true, blink: false, features: f }), [tabId, [0, 0, 0, 0, x, y, -40]]);
     const size = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
